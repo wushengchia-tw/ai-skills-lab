@@ -10,10 +10,10 @@
 - Baseline commit SHA: 566cdd27ee760683aa42700dd8fa3cb883f31474
 - Pull Request: #1
 - Pull Request state: Draft
-- Status: APPROVED_FOR_PREFLIGHT_DISCOVERY
+- Status: APPROVED_FOR_ISOLATED_INSTALL_AND_SMOKE_VALIDATION
 - Task type: Isolated installation and manual acceptance validation
-- Installation authorization: Pending Product Owner approval
-- Manual test authorization: Pending Product Owner approval
+- Installation authorization: Granted for isolated temporary project only
+- Manual test authorization: Not granted for DG-001 through DG-020
 - Commit authorization: Not granted
 - Push authorization: Not granted
 - Merge authorization: Not granted
@@ -263,19 +263,25 @@ Immediately stop and report if:
 
 ## Product Owner Authorization Record
 
-- Installation authorization: PENDING
-- Manual test authorization: PENDING
+- Preflight discovery authorization: COMPLETED
+- Installation authorization: GRANTED
+- Installation authorization scope: Isolated disposable project-level installation only
+- Smoke validation authorization: GRANTED
+- Manual test authorization: NOT_GRANTED
 - Authorized by: Product Owner
 - Authorization date: 2026-07-29
-- Preflight discovery authorization: GRANTED
-- Installation authorization scope: Not granted
-- Manual test authorization scope: Not granted
-- Authorized temporary environment: PENDING
-- Authorized installation method: PENDING
+- Authorized source directory: A disposable clone of `wushengchia-tw/ai-skills-lab` checked out to `feature/grill-me-pro`
+- Authorized temporary test project: A new disposable directory outside `D:\ai-skills-lab`
+- Authorized installation method: `npx skills@latest add <disposable-source-path> --agent codex --skill decision-grill`
+- Authorized project Skill destination: `.agents/skills/decision-grill`
+- Authorized loading method: Start a new Codex session from the disposable test project
+- Authorized cleanup method: Close the test session and remove both disposable directories
+- Normal user Skill directory write authorization: Not granted
 - Repository write authorization: Not granted
 - Test-result persistence authorization: Not granted
-- Commit authorization: Not granted
-- Push authorization: Not granted
+- DG-001 through DG-020 execution authorization: Not granted
+- Commit authorization: Not granted after this TASK-002 authorization commit
+- Push authorization: Not granted after this TASK-002 authorization commit
 - PR state-change authorization: Not granted
 - Merge authorization: Not granted
 
@@ -312,8 +318,8 @@ When separately authorized and completed, report only:
 
 ## Stop Condition
 
-This task is approved only for read-only preflight discovery of the supported installation method and a safe isolated validation environment.
+This task is authorized only for an isolated disposable project-level installation and Smoke Validation of `decision-grill`.
 
-This approval does not authorize Skill installation, invocation testing, manual acceptance testing, Repository mutation, PR state changes, or persistence of test results.
+The authorization does not permit execution of DG-001 through DG-020, persistence of test results, modification of Repository files, modification of the normal user Skill environment, PR state changes, or merge.
 
-Installation and manual validation may begin only after the Product Owner separately approves the exact temporary environment, installation method, cleanup method, and test-execution scope.
+After Smoke Validation and cleanup, stop and return the completion report for Product Owner review.
