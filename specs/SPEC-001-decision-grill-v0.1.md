@@ -59,9 +59,9 @@ The existing `grill-me` and `grilling` flow is valuable: it asks one question at
 | Phase | Purpose | Agent behavior | Entry condition | Completion condition |
 | --- | --- | --- | --- | --- |
 | Intake | Understand the initial request. | Restate the request, distinguish stated facts from candidate decisions, and identify the likely decision goal. | User starts a decision interview. | Enough context exists to propose a decision goal. |
-| Scope Lock | Bound the session to one achievable decision goal. | Ask for confirmation or correction of the goal; mark adjacent matters as out of scope or deferred. | Intake has a proposed goal. | User confirms the goal, or the session stops and recommends `wayfinder` because the goal is too large. |
+| Scope Lock | Bound the session to one achievable decision goal. | Apply the Goal Lock precedence and evidence rules; mark adjacent matters as out of scope or deferred. | Intake has a proposed or directly evidenced goal. | A directly authorized bounded goal proceeds to the requested Decision-Grill behavior; an ambiguous goal is clarified or confirmed; an oversized goal stops with a `wayfinder` recommendation. |
 | Coverage Scan | Locate material gaps across the minimum framework. | Inspect the 11 coverage areas using conversation, available documents, and environment facts; create questions only for material gaps. | Scope is locked. | All coverage areas are assessed as covered, gap, or NOT_APPLICABLE. |
-| Decision Interview | Resolve the next material question. | Present exactly one primary question, its recommendation, alternatives, and deferral effect; update the ledger from the answer. | A non-blocked material question exists. | The answered question is recorded and the next eligible question is identified. |
+| Decision Interview | Resolve the next material question. | Present exactly one primary question, its recommendation, alternatives, and deferral effect; append the required ledger event from the answer. | A non-blocked material question exists. | The answered question is visibly recorded before any next eligible independent question is presented. |
 | Dependency and Conflict Check | Protect against contradictions and cycles. | Compare answers, dependencies, assumptions, and provisional decisions; surface cycles and their upstream prerequisite. | A decision changes, or no open question remains. | Material dependencies, contradictions, and cycles are resolved, deferred, or explicitly blocked. |
 | Convergence Check | Evaluate objective completion conditions. | Evaluate every convergence condition and identify any remaining blocker or gap. | Coverage and interview work have reached a candidate stopping point, or the user requests confirmation. | All objective conditions are met, or a NOT_CONVERGED state is established. |
 | Closing Summary | Produce a durable-in-conversation account of the result. | Emit all eight required summary sections, including `None` for empty sections. | A convergence check has run, or the user requests an early stop. | Summary contains status, blockers, coverage gaps, and user-confirmation status. |
@@ -126,8 +126,8 @@ Do not present multiple independent primary decision questions at once.
 
 | User answer | Required Agent handling |
 | --- | --- |
-| Accept recommendation | Record the recommended answer as confirmed, update dependent questions, and continue only if another material question exists. |
-| Choose alternative | Record the selected alternative, its rationale if supplied, and re-evaluate dependencies and risks. |
+| Accept recommendation | Append a visible accepted-result ledger event, record the recommended answer as confirmed or `ANSWERED`, re-evaluate dependents, and only then continue if another material question exists. |
+| Choose alternative | Append a visible answered-result ledger event with the selected alternative and rationale if supplied, then re-evaluate dependencies and risks. |
 | Modify recommendation | Restate the modified decision for confirmation, record it once confirmed, and re-evaluate consequences. |
 | Unknown | Apply the Unknown Handling procedure; never convert it automatically into a formal decision. |
 | Uncertain | Record the uncertainty, determine whether a fact or decision is missing, and offer provisional, defer, research-required, or stop options. |
@@ -179,7 +179,18 @@ Every assumption must contain:
 - Validation method
 - Status
 
-## Question Ledger
+## State and Ledger Contract
+
+### Decision-item states
+
+Allowed decision-question statuses are `OPEN`, `ANSWERED`, `PROVISIONAL`, `DEFERRED`, `BLOCKED`, `OUT_OF_SCOPE`, and `SUPERSEDED` only.
+
+- `OPEN` means the active decision question can currently be answered or decided directly by the user. Do not use `OPEN` for unavailable data, external approval, dependency release, a cycle, or another condition that prevents safe progress.
+- `BLOCKED` means the decision cannot safely progress because of an external prerequisite, approval, dependency, cycle, or required unknown fact. Record both the blocker and every affected decision item.
+- `RESEARCH_REQUIRED` is a fact or work-status record, never a decision-question status and never a resolved decision. Pair it with the affected decision's status. If the missing fact prevents safe progress, that decision is `BLOCKED`; otherwise the user may explicitly choose `PROVISIONAL` or `DEFERRED`.
+- `PROVISIONAL` and `DEFERRED` require an explicit user selection. Never assign either automatically to escape a blocker, research need, or cycle.
+
+### Question ledger
 
 The Agent must maintain a session-internal ledger containing:
 
@@ -191,15 +202,28 @@ The Agent must maintain a session-internal ledger containing:
 - User answer
 - Decision state
 - Last asked reason
-
-Allowed question statuses are `OPEN`, `ANSWERED`, `PROVISIONAL`, `DEFERRED`, `BLOCKED`, `OUT_OF_SCOPE`, and `SUPERSEDED` only.
+- Blocker and affected decision item, when status is `BLOCKED`
 
 Rules:
 
 - Do not re-ask an `ANSWERED` question with different wording.
-- When a new answer overturns an older answer, mark the original question `SUPERSEDED`.
-- On detecting a cycle, stop repeated questioning, state the cycle, and identify the upstream question that must be resolved first.
+- When a new answer overturns an older answer, mark the original question `SUPERSEDED`, re-evaluate every dependent item, and remove or replace any stale confirmed state that depended on the superseded answer.
+- On detecting a cycle, first mark each affected decision item `BLOCKED` with the cycle and its impact, then stop repeated questioning and identify the upstream question or rule that must be resolved first. Proposing that rule does not itself unblock the cycle.
 - Do not re-raise a `DEFERRED` question in the same session without new information.
+
+### Ledger events and accepted-result ordering
+
+Append a visible, conversation-local ledger event whenever an answer is accepted or recorded. Each event must identify the question, lifecycle (`ANSWERED` or accepted), and the decision result or resulting state. For example:
+
+```markdown
+**Ledger event:**
+- Question ID: Q-001
+- Lifecycle: ANSWERED
+- Decision result: <accepted recommendation or selected alternative>
+- Status: ANSWERED
+```
+
+When the user accepts a recommendation or answers a question, append this event before presenting any next independent `Q-...` question. The event is a record of that result, not a claim that the whole session is `CONVERGED`.
 
 ## Minimum Coverage Framework
 
@@ -229,18 +253,24 @@ Rules:
 
 - In a single session, the Agent obtains facts available from current files, the codebase, tools, or connected environments.
 - Do not ask the user for facts the Agent can find itself.
-- Mark long-running, cross-source, or single-session-exceeding research as `RESEARCH_REQUIRED`.
+- Mark long-running, cross-source, or single-session-exceeding research as `RESEARCH_REQUIRED` on the fact or work record, and pair it with the affected decision-item state.
 - Never present `RESEARCH_REQUIRED` as a confirmed fact.
-- If research blocks a BLOCKER, the session cannot be declared complete.
-- If research affects only IMPORTANT or DEFERABLE items, create a provisional decision or defer it.
+- If a missing research fact prevents safe progress, mark the affected decision `BLOCKED` and the session cannot be declared complete.
+- If research affects only IMPORTANT or DEFERABLE items, offer provisional or defer options, but record either only after the user selects it.
 - v0.1 does not automatically start `wayfinder` or external research; recommend the next step only in the summary.
 
 ## Scope Control
 
-- Scope Lock must explicitly confirm the current decision goal.
+- Apply Goal Lock in this order before Intake, Coverage Scan, or a primary question:
+  1. Refuse an implementation, edit, create, modify, run, or execute request absolutely. This takes precedence over every other Goal Lock outcome.
+  2. If the goal is multiple, oversized, or unbounded for one session, stop the interview and recommend `wayfinder` without invoking it; if the user requests a summary, produce only the required `NOT_CONVERGED` summary.
+  3. If the goal is absent, ambiguous, or not directly authorized, request one goal clarification or confirmation.
+  4. If the goal is explicit, single, achievable, and bounded, and the user directly requests a material decision question, blocker record, or decision summary, treat that request as sufficient Goal Lock evidence and proceed directly to that requested behavior.
+- Goal Lock evidence is semantic rather than phrase-based. It must assess the goal's explicitness, singularity, boundedness, achievability, and the user's direct request; it must not require a fixed wording or a separate confirmation turn when those facts are already present.
 - Mark new matters that do not affect the goal as `OUT_OF_SCOPE` or `DEFERRED`.
 - Do not expand the interview indefinitely because adjacent issues appear.
-- If the goal cannot reasonably converge in one session, stop deepening the interview and recommend `wayfinder`.
+- An implementation request remains refused even if it also contains a bounded goal; an oversized goal remains terminal even if it also requests a question or blocker record, except that a requested summary receives only the required `NOT_CONVERGED` summary.
+- An implementation refusal must not request a plan, path, or files, invoke another Skill, call tools, or perform any implementation action.
 
 ## Convergence Conditions
 
@@ -260,6 +290,20 @@ Additional rules:
 - If the user requests a stop, produce an unconverged summary but do not mark the session complete.
 - Never claim shared understanding is complete while a BLOCKER remains unresolved.
 - User confirmation cannot replace the first seven objective conditions.
+
+## Post-Summary State Machine
+
+A complete Closing Summary establishes the current ledger baseline for goal, scope, decisions, assumptions, unknowns, risks, out-of-scope items, and recommended next action. Producing that summary never by itself changes the session to `CONVERGED`.
+
+After a complete summary, process the next user message in this exact order:
+
+1. **User modification or reopening.** If the user actually changes, rejects, or reopens a goal, scope, decision, assumption, or risk, reopen only the affected ledger items and their dependents. Return to the applicable lifecycle phase for that affected scope; do not repeat a full interview or a generic Goal Lock/coverage scan.
+2. **Objective condition or material gap remains.** If an existing ledger item remains a material gap, ask only the highest-priority eligible unresolved ledger item. Do not re-ask locked goal evidence or scan coverage that the summary already established.
+3. **Confirmation-only.** If all first seven objective conditions hold and explicit user confirmation is the only missing condition, retain `NOT_CONVERGED`, state that confirmation is the sole remaining condition, and make one clear request for explicit confirmation. Do not introduce a question, blocker, assumption, goal, or coverage gap; do not use an action phrase such as “proceed”, “continue with the plan”, or “looks good” as a substitute for that request.
+4. **Explicit confirmation.** Mark `CONVERGED` only when the user explicitly confirms and the first seven objective conditions still hold. Regenerate or update the complete summary with confirmed user status.
+5. **Incomplete summary.** If the summary was not complete, continue only the existing missing coverage or ledger work; it is not a post-summary baseline.
+
+Plain `Continue the interview.` is neither a modification nor a reopening. It follows step 2 when a material gap exists, otherwise step 3 when confirmation is the only missing condition.
 
 ## Closing Summary
 
@@ -321,7 +365,9 @@ Never execute a recommended next action automatically.
 | Scope expansion | Mark adjacent matters OUT_OF_SCOPE or DEFERRED; recommend `wayfinder` for oversized goals. |
 | Over-reliance on a checklist | Treat coverage as a scan and ask only about material gaps. |
 | Continuing without a material gap | Stop asking when coverage and ledger show no substantive open issue. |
-| Claiming confirmation from insufficient research | Mark missing work RESEARCH_REQUIRED and retain the appropriate blocker or provisional state. |
+| Losing summary baseline | Apply the post-summary state machine; do not repeat locked-goal or completed-coverage questions. |
+| Treating an action phrase as confirmation | Keep `NOT_CONVERGED` and request explicit confirmation. |
+| Claiming confirmation from insufficient research | Mark the missing fact or work `RESEARCH_REQUIRED` and retain the paired affected decision state; use `BLOCKED` when safe progress depends on it. |
 | Starting implementation before convergence | Treat implementation as a non-goal and recommend next actions only after the summary. |
 
 ## User Controls
@@ -340,15 +386,15 @@ The user may at any time request:
 
 ## Acceptance Criteria
 
-1. **Given** a normal answerable decision, **when** the session begins, **then** the Agent asks one primary question with a recommendation and records the confirmed answer.
+1. **Given** a normal answerable decision with sufficient Goal Lock evidence, **when** the session begins, **then** the Agent asks one primary question with a recommendation and records the confirmed answer without a redundant goal-confirmation turn.
 2. **Given** a user says “I don't know,” **when** the item is a decision, **then** the Agent follows Unknown Handling and does not record a confirmed decision.
 3. **Given** an IMPORTANT item lacks certainty, **when** the user accepts a provisional answer, **then** the Agent records every required provisional-decision field and status `PROVISIONAL`.
 4. **Given** an IMPORTANT question is deferred, **when** the user chooses defer, **then** the ledger records DEFERRED, consequence, and revisit trigger.
 5. **Given** an unresolved BLOCKER exists, **when** the user asks to converge, **then** the summary is `NOT_CONVERGED` and names the remaining blocker.
 6. **Given** a needed fact exists in the current environment, **when** the Agent needs it, **then** the Agent looks it up instead of asking the user.
-7. **Given** a needed fact requires extended or cross-source work, **when** it cannot be obtained in-session, **then** the Agent marks it `RESEARCH_REQUIRED` and does not claim it as confirmed.
-8. **Given** a user overturns an earlier answer, **when** the new answer is accepted, **then** the original ledger entry is `SUPERSEDED` and dependencies are re-evaluated.
-9. **Given** cyclic dependencies appear, **when** detected, **then** the Agent identifies the cycle and upstream prerequisite instead of repeating questions.
+7. **Given** a needed fact requires extended or cross-source work, **when** it cannot be obtained in-session, **then** the Agent marks the fact `RESEARCH_REQUIRED`, records the affected decision state, and does not claim either as confirmed.
+8. **Given** a user overturns an earlier answer, **when** the new answer is accepted, **then** the original ledger entry is `SUPERSEDED`, all dependents are re-evaluated, and no stale dependent confirmed state remains.
+9. **Given** cyclic dependencies appear, **when** detected, **then** the Agent marks each affected item `BLOCKED`, identifies the cycle and upstream prerequisite, and does not repeat questions.
 10. **Given** coverage has no material gap, **when** scanning that area, **then** the Agent does not manufacture a question.
 11. **Given** the goal exceeds a single session, **when** Scope Lock identifies that condition, **then** the Agent stops deepening and recommends `wayfinder`.
 12. **Given** the user asks to stop early, **when** the request is received, **then** the Agent produces a `NOT_CONVERGED` summary without claiming completion.
@@ -360,6 +406,9 @@ The user may at any time request:
 18. **Given** `grill-me` is not installed, **when** `decision-grill` is used, **then** the session remains usable and does not require installation of `grill-me`.
 19. **Given** a next action is appropriate, **when** the summary recommends `to-spec` or `wayfinder`, **then** the Skill recommends but does not invoke either.
 20. **Given** the first seven objective convergence conditions hold, **when** the user has not explicitly confirmed, **then** the Agent must not mark the session `CONVERGED`.
+21. **Given** an explicit, single, achievable bounded goal and a direct request for a material decision question, blocker record, or decision summary, **when** Scope Lock evaluates the request, **then** the Agent proceeds directly to that behavior without requiring exact wording or an additional goal confirmation.
+22. **Given** an absent, ambiguous, or not directly authorized goal, **when** Scope Lock evaluates the request, **then** the Agent requests goal clarification or confirmation before proceeding.
+23. **Given** a user accepts a recommendation, **when** the Agent continues the interview, **then** a visible ledger event for that question's accepted result appears before any next independent `Q-...` question.
 
 ## Out of Scope for v0.1
 

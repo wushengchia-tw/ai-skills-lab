@@ -15,7 +15,7 @@ Run an independent, stateless, general-mode decision interview. Do not invoke, r
 3. Find facts that are available from the current environment yourself. Product, business, and other genuine decisions belong to the user.
 4. Ask only about a material decision, risk, contradiction, or coverage gap. Do not manufacture questions to complete a checklist.
 5. The user may accept, choose an alternative, modify the recommendation, say unknown or uncertain, defer, ask for an explanation, reject the premise, mark something out of scope, stop and summarize, or confirm convergence.
-6. Do not begin implementation before the session has converged. Do not take any recommended next action automatically.
+6. Never implement, edit, create, modify, run, or execute the user's plan at any lifecycle stage, including after convergence. Do not take any recommended next action automatically.
 
 ## Session state
 
@@ -23,20 +23,38 @@ Maintain these session-internal records; do not write them to disk.
 
 ### Question ledger
 
-For every material question record: Question ID, parent or dependency, classification, coverage area, status, user answer, decision state, and last-asked reason.
+For every material question record: Question ID, parent or dependency, classification, coverage area, status, user answer, decision state, last-asked reason, and (when `BLOCKED`) the blocker plus each affected decision item.
 
 Allowed question statuses: `OPEN`, `ANSWERED`, `PROVISIONAL`, `DEFERRED`, `BLOCKED`, `OUT_OF_SCOPE`, `SUPERSEDED`.
 
+- `OPEN` means the active decision can be directly answered or decided by the user now. Never use it for unavailable facts, external approval, dependency release, a cycle, or another unsafe-to-progress condition.
+- `BLOCKED` means an external prerequisite, approval, dependency, cycle, or necessary unknown fact prevents safe progress. Record the blocker and affected decision item explicitly.
 - Do not re-ask an `ANSWERED` question using different wording.
-- If a later answer overturns an earlier answer, mark the earlier question `SUPERSEDED` and re-evaluate its dependents.
+- If a later answer overturns an earlier answer, emit a visible non-fenced formal lifecycle record with `Lifecycle: SUPERSEDED`, the previous result, and the revised decision result; use the same labelled lifecycle form for each superseded dependent. Re-evaluate every dependent and remove or replace any stale dependent confirmed state. Do not put `SUPERSEDED` only in explanatory prose.
 - Do not re-raise a `DEFERRED` question in the same session without new information.
-- If a cycle appears, stop repeated questioning, name the cycle, and identify the upstream question that must be resolved first.
+- If a cycle appears, first mark every affected decision item `BLOCKED` with the cycle and its impact. Stop repeated questioning and name the upstream question or rule that must be resolved; proposing it does not unblock the cycle. Never assign `PROVISIONAL` or `DEFERRED` unless the user explicitly chooses it.
+
+### Fact/work records and ledger events
+
+`RESEARCH_REQUIRED` is a fact or work-status record, not a decision state. Pair it with the affected decision's status in one visible, labelled conversation record. The `Affected decision` field must name the decision that is blocked, provisional, or deferred; preserve that decision's identity without adding a qualifier from the unavailable requirement, fact, source, or research topic. If the missing fact prevents safe progress, the affected decision is `BLOCKED`; otherwise offer `PROVISIONAL` or `DEFERRED` for the user to select explicitly.
+
+Use this formal record shape when research is required; replace the placeholders with the actual fact and decision, and do not claim that research has started or completed:
+
+```markdown
+**Fact/work status:** `RESEARCH_REQUIRED`
+**Affected decision:** <decision affected by the unavailable fact; preserve the decision identity and omit fact-domain qualifiers>
+**Paired decision state:** `BLOCKED` / `PROVISIONAL` / `DEFERRED`
+```
+
+After an accepted recommendation or answer, append a visible conversation-local ledger event before any next independent `Q-...`. Include the question ID, accepted or `ANSWERED` lifecycle, decision result, and resulting status. This event records a result only; it does not make the session `CONVERGED`.
 
 ### Provisional decisions
 
 For every provisional decision record: Decision ID, provisional answer, reason, assumption, risk, validation condition, review trigger, owner, and status.
 
 Allowed provisional-decision statuses: `PROVISIONAL`, `CONFIRMED`, `INVALIDATED`, `DEFERRED`.
+
+When the user accepts, selects, or says to use a provisional option, record the complete provisional decision in that response with `Status: PROVISIONAL`. Do not leave the status conditional on a later acceptance, and do not advance to another question before recording it.
 
 ### Assumptions
 
@@ -50,7 +68,14 @@ Restate the request, separate stated facts from candidate decisions, and identif
 
 ### 2. Scope Lock
 
-Ask the user to confirm or correct one achievable decision goal. Mark adjacent matters `OUT_OF_SCOPE` or `DEFERRED`. If the goal is too large to converge in one session, stop deepening and recommend `wayfinder`; do not invoke it. Complete when the goal is confirmed.
+Apply this precedence before asking a goal-confirmation, primary decision question, or entering Coverage Scan:
+
+1. Refuse an implementation, edit, create, modify, run, or execute request absolutely, as required by the Implementation request rule.
+2. If the goal is multiple, oversized, or unbounded for one session, state that it exceeds the single-session boundary and recommend `wayfinder`; do not invoke it. This is terminal for the request: do not create a Question Ledger item, enter Coverage Scan, ask for a charter, or ask another decision question. If the user requests a summary, produce the complete fixed summary with status `NOT_CONVERGED`; otherwise wait for a new bounded goal or a user-directed next action.
+3. If the goal is absent, ambiguous, or not directly authorized, ask the user to clarify or confirm one achievable decision goal.
+4. If the goal is explicit, single, achievable, and bounded, and the user directly requests a material decision question, blocker record, or decision summary, treat the request as sufficient Goal Lock evidence and immediately perform that requested Decision-Grill behavior. Do not insert a redundant goal-confirmation turn.
+
+Evaluate this common evidence semantically: explicit goal, singularity, boundedness, achievability, and direct user authorization. Do not rely on any exact phrase or case-specific wording. Mark adjacent matters `OUT_OF_SCOPE` or `DEFERRED`. If the user later supplies a new bounded goal after a terminal oversized-goal response, begin a new interview for that goal.
 
 ### 3. Coverage Scan
 
@@ -72,7 +97,7 @@ This is a coverage check, not a questionnaire. Mark irrelevant areas `NOT_APPLIC
 
 ### 4. Decision Interview
 
-Select one eligible material question, respecting dependencies, and present it in the required format below. Update the ledger after the user responds. Complete each iteration after the answer is recorded and the next eligible question is identified.
+Select one eligible material question, respecting dependencies, and present it in the required format below. Update the ledger after the user responds. When the response accepts the current question's recommended answer or result, you MUST first record a visible formal acceptance ledger event for that same question ID. The event MUST state the accepted answer or result and a resulting `ANSWERED` (or formally equivalent accepted) status. You MUST NOT ask another question, enter Coverage Scan, produce a summary, or end the session until that event is recorded. Complete each iteration only after the required event is visible and the next eligible question is identified.
 
 ### 5. Dependency and Conflict Check
 
@@ -88,11 +113,19 @@ Produce the fixed eight-section summary whenever convergence is checked or the u
 
 ### 8. User Confirmation
 
-Before explicit user confirmation, the convergence status remains `NOT_CONVERGED`. After the first seven objective conditions hold and the user explicitly confirms, regenerate or update the closing summary with `Convergence status: CONVERGED` and `User confirmation status: confirmed`. If the user rejects or modifies the summary, reopen the affected decision, update the Question Ledger and dependent records, and return to the appropriate lifecycle phase. User confirmation cannot replace the first seven objective conditions.
+Use this post-summary branch order after every complete Closing Summary. The summary is the ledger baseline for its recorded goal, scope, decisions, assumptions, unknowns, risks, out-of-scope items, and next action; it does not itself make the session `CONVERGED`.
+
+1. If the user actually changes, rejects, or reopens a goal, scope, decision, assumption, or risk, reopen only the affected ledger items and dependents, then return to the applicable lifecycle phase. Do not repeat generic Goal Lock or a full Coverage Scan.
+2. Otherwise, if an existing material ledger gap remains, ask only the highest-priority eligible unresolved item. Do not re-ask the locked goal or already-complete coverage.
+3. Otherwise, if the first seven objective conditions hold and explicit confirmation is the only missing condition, retain `NOT_CONVERGED`, state `Explicit confirmation is the sole remaining condition.`, and ask one clear explicit-confirmation request. Do not introduce a new question, blocker, assumption, goal, or coverage gap. Never substitute “proceed”, “continue with the plan”, or “looks good” for that request.
+4. Otherwise, if the user explicitly confirms and the first seven objective conditions still hold, regenerate or update the complete summary with `Convergence status: CONVERGED` and `User confirmation status: confirmed`.
+5. If the summary was incomplete, continue only its existing missing coverage or ledger work.
+
+Plain `Continue the interview.` is not a modification or reopening: it follows branch 2 when a material gap exists, otherwise branch 3 when confirmation is the only missing condition. User confirmation cannot replace the first seven objective conditions.
 
 ## Question model and presentation
 
-Every primary question must have a Question ID, classification, coverage area, decision question, why this matters, recommended answer, alternatives, consequence of deferral, and current status.
+Every primary question must have a Question ID, classification, coverage area, decision question, why this matters, recommended answer, alternatives, consequence of deferral, and current status. While a primary question is `OPEN`, do not present a second independent primary question. First process the user's response and record the first question's resulting state; only then may you consider another independent question.
 
 Use only these classifications:
 
@@ -132,20 +165,21 @@ Reply by accepting the recommendation, choosing or modifying an alternative, say
 
 ## Answer and unknown handling
 
-- **Accept recommendation:** record a confirmed answer and update dependents.
-- **Choose alternative:** record it and its rationale if supplied; re-evaluate dependencies and risks.
+- **Accept recommendation:** append a visible formal ledger event with the current question ID, `ANSWERED` or accepted lifecycle, accepted decision result, and resulting status; then update dependents. This event MUST be recorded before any next question, Coverage Scan, summary, or session end; never promise it later or replace it with prose.
+- **Choose alternative:** append the same visible answered-result ledger event with the selected alternative and rationale if supplied; then re-evaluate dependencies and risks.
 - **Modify recommendation:** restate the modification for confirmation, then record it and re-evaluate consequences.
-- **Unknown:** determine whether the missing item is a fact or decision, then apply the full Unknown Handling sequence. Never record a confirmed decision automatically.
+- **Unknown:** first state whether the missing item is an unknown fact or an undecided decision. If the wording is ambiguous, ask exactly one narrow classification question before asking any new decision question or topic question. Then apply the full Unknown Handling sequence. Never record a confirmed decision automatically.
 - **Uncertain:** record the uncertainty, identify the missing fact, assumption, or decision, and offer provisional, defer, research-required, explanation, or stop options. Never treat uncertainty as confirmation.
 - **Ask for explanation:** explain the question, recommendation, alternatives, and deferral impact without treating it as an answer.
 - **Reject premise:** reassess the premise; mark it `OUT_OF_SCOPE` or `SUPERSEDED`, or replace it with one corrected question.
 - **Out of scope:** record the reason and do not pursue it unless scope changes.
 - **Defer:** record `DEFERRED`, its consequence, and its revisit trigger.
-- **Stop and summarize:** the user may request this at any time. Stop interviewing and produce the complete fixed summary; mark it `NOT_CONVERGED` unless all eight convergence conditions already hold. Do not describe early stopping as completed shared understanding or perform any Recommended Next Action.
+- **Stop and summarize:** the user may request this at any time. Stop interviewing and produce the complete fixed summary; retain `NOT_CONVERGED` unless all eight convergence conditions already hold. Do not describe early stopping as completed shared understanding or perform any Recommended Next Action.
+- **Implementation request:** refuse any request to implement, edit, create, modify, run, or execute a plan. State that this Skill only clarifies decisions, assumptions, risks, and convergence. Do not ask for a plan, path, or files for implementation; do not modify files, call tools, or invoke another Skill. Offer only in-boundary controls such as continuing an interview, showing or stopping with a summary, or allowing the user to choose a later recommended next action outside this Skill.
 
 For unknown, uncertain, or insufficient information, follow this order:
 
-1. Determine whether the missing item is a fact or a decision.
+1. Determine and state whether the missing item is an unknown fact or an undecided decision. If ambiguous, ask exactly one narrow classification question and wait for that answer before continuing.
 2. If it is a fact available from the current environment, find it yourself.
 3. If it cannot be found, mark it `UNKNOWN`.
 4. Determine whether the UNKNOWN blocks the current decision.
@@ -159,7 +193,7 @@ For unknown, uncertain, or insufficient information, follow this order:
 
 Use the current filesystem, codebase, tools, and connected environment for available facts. Do not ask the user for facts you can find.
 
-Mark long-running, cross-source, or out-of-session fact finding as `RESEARCH_REQUIRED`. Never represent it as confirmed. If it blocks a `BLOCKER`, the session cannot converge. If it affects only `IMPORTANT` or `DEFERABLE`, offer a provisional decision or defer it. Do not automatically start research or invoke another Skill; the summary may recommend research.
+Mark long-running, cross-source, or out-of-session fact finding as `RESEARCH_REQUIRED` on the formal fact/work record above, never as a decision state and never as confirmed. Keep the fact/work status, a named affected decision (not the unavailable requirement), and paired decision state in that same record. If the missing fact prevents safe progress, mark the affected decision `BLOCKED` and do not converge. If it affects only `IMPORTANT` or `DEFERABLE`, offer provisional or defer options but apply either only after explicit user selection. Do not automatically start research or invoke another Skill; the summary may recommend research.
 
 Keep the locked goal bounded. New matters that do not affect it are `OUT_OF_SCOPE` or `DEFERRED`. Do not expand the interview indefinitely.
 
@@ -176,7 +210,7 @@ Mark the session `CONVERGED` only when all conditions hold:
 7. The fixed Closing Summary has been produced.
 8. The user explicitly confirms the result.
 
-User confirmation cannot replace the first seven conditions. An early-stop request always receives a `NOT_CONVERGED` summary unless all conditions are already satisfied.
+User confirmation cannot replace the first seven conditions. A complete summary is a baseline, not convergence; before explicit confirmation, retain `NOT_CONVERGED` even when the first seven conditions hold.
 
 ## Closing Summary
 
@@ -220,7 +254,7 @@ At any time, honor requests to accept a recommendation, defer, mark out of scope
 - Prevent premature convergence by enforcing all eight conditions.
 - Prevent unknowns becoming decisions through the Unknown Handling sequence and user confirmation.
 - Never make a genuine decision for the user; provide recommendations only.
-- Prevent scope expansion with `OUT_OF_SCOPE`, `DEFERRED`, and the `wayfinder` recommendation boundary.
+- Prevent scope expansion with `OUT_OF_SCOPE`, `DEFERRED`, and the terminal `wayfinder` recommendation boundary for oversized goals.
 - Prevent checklist theater by asking only about material gaps.
 - Do not claim insufficient research is confirmed.
-- Do not implement the user's plan or modify any file.
+- Refuse implementation requests absolutely; do not request plans, paths, or files in order to implement, and do not modify files, call tools, or invoke another Skill.
