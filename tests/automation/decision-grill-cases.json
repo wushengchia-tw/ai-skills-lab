@@ -1,0 +1,1076 @@
+[
+  {
+    "case_id": "DG-001",
+    "title": "Normal answerable decision",
+    "judge_semantic_requirements": [{"id":"recommendation_is_material","description":"The recommendation addresses the bounded launch decision and its stated owners."}],
+    "execution_priority": "full",
+    "fixture_setup": "Fresh active regression folder; project-level decision-grill only; do not create files or invoke another Skill.",
+    "fixtures": [],
+    "desktop_initial_input": "/decision-grill\nStart a bounded decision interview. Goal: decide whether to launch the Aurora pilot to its 100 invited customers on 2026-10-01. The Product Owner and Support Lead are the decision owners. The choice is launch on 2026-10-01 or delay the pilot. Ask the first material decision question only.",
+    "cli_initial_input": "$decision-grill\nStart a bounded decision interview. Goal: decide whether to launch the Aurora pilot to its 100 invited customers on 2026-10-01. The Product Owner and Support Lead are the decision owners. The choice is launch on 2026-10-01 or delay the pilot. Ask the first material decision question only.",
+    "ordered_subsequent_inputs": [
+      "Accept the recommendation."
+    ],
+    "send_condition": "Only after one primary question with a recommendation; send no other response first.",
+    "expected_behavior": "Ask exactly one primary question with a recommendation, then append a visible accepted-result ledger event before any next independent question.",
+    "observable_evidence": "Q-001 before input 1, no second independent question, then a ledger event identifies Q-001, ANSWERED/accepted lifecycle, and decision result; Q-002 may appear only after that event.",
+    "pass_conditions": [
+      "No second independent question before input 1 is processed",
+      "first question has a recommendation",
+      "acceptance is recorded in a visible ledger event before any Q-002"
+    ],
+    "fail_conditions": [
+      "second question before processing",
+      "no recommendation",
+      "acceptance not recorded"
+    ],
+    "blocked_conditions": [
+      "project-level Skill unavailable",
+      "session cannot accept invocation",
+      "system error"
+    ],
+    "allowed_tools": [],
+    "forbidden_tools": [
+      "all product-modifying tools"
+    ],
+    "file_mutation_policy": "no file change",
+    "automatic_skill_invocation_policy": "decision-grill only; no automatic other Skill",
+    "required_keywords": [
+      "Q-001",
+      "Recommended answer"
+    ],
+    "required_states": [
+      "ANSWERED"
+    ],
+    "send_condition_requirements": [
+      {
+        "forbidden_patterns": [
+          "(?im)^###\\s+Q-002\\b"
+        ],
+        "input_index": 1,
+        "mode": "required",
+        "required_patterns": [
+          "(?im)^###\\s+Q-001\\b",
+          "(?im)^\\*\\*Recommended answer:\\*\\*"
+        ]
+      }
+    ],
+    "post_input_ordered_assertions": [
+      {
+        "accepted_state_markers": [
+          "ANSWERED",
+          "CONFIRMED",
+          "accepted",
+          "confirmed"
+        ],
+        "accepted_event_pattern": "(?ism)(?:(?:\\*\\*Ledger event:\\*\\*|Ledger event).*?(?:Question ID|Question):\\s*Q-001\\b.*?(?:Lifecycle|Status):\\s*(?:ANSWERED|ACCEPTED)\\b.*?(?:Decision result|Decision state|Result):|(?:^|\\r?\\n)\\s*\\*\\*Ledger event\\s*[—-]\\s*Q-001:\\*\\*\\s*(?:ANSWERED|ACCEPTED|`(?:ANSWERED|ACCEPTED)`|\\*\\*(?:ANSWERED|ACCEPTED)\\*\\*)\\s*(?:(?!\\r?\\n###\\s+Q-\\d{3}\\b)[\\s\\S])*?(?:(?:^|\\r?\\n)\\s*)?(?:\\*{0,2})?Decision result(?:\\*{0,2})?\\s*:\\s*\\S+[\\s\\S]*?(?:(?:^|\\r?\\n)\\s*)?(?:\\*{0,2})?(?:Resulting\\s+status|Status)(?:\\*{0,2})?\\s*:\\s*(?:ANSWERED|ACCEPTED|`(?:ANSWERED|ACCEPTED)`|\\*\\*(?:ANSWERED|ACCEPTED)\\*\\*)\\s*(?:[.;])?\\s*$|(?:^|\\r?\\n)\\s*\\*\\*Ledger event\\s*[—-]\\s*Q-001:\\*\\*\\s*(?:ANSWERED|ACCEPTED|`(?:ANSWERED|ACCEPTED)`|\\*\\*(?:ANSWERED|ACCEPTED)\\*\\*)\\s*(?:(?!\\r?\\n###\\s+Q-\\d{3}\\b)[\\s\\S])*?\\bStatus\\s*:\\s*(?:ANSWERED|ACCEPTED|`(?:ANSWERED|ACCEPTED)`|\\*\\*(?:ANSWERED|ACCEPTED)\\*\\*)\\s*(?:[.;])?\\s*$)",
+        "accepted_question_id": "Q-001",
+        "require_accepted_result": true,
+        "next_question_id": "Q-002",
+        "next_question_must_follow_accepted": true,
+        "input_index": 1
+      }
+    ]
+  },
+  {
+    "case_id": "DG-002",
+    "title": "Unknown decision",
+    "judge_semantic_requirements": [{"id":"unknown_handling_explained","description":"The response treats uncertainty as unresolved rather than silently confirming a decision."}],
+    "execution_priority": "core",
+    "fixture_setup": "Fresh active regression folder; do not pre-classify the later response.",
+    "fixtures": [],
+    "desktop_initial_input": "/decision-grill\nStart a decision interview. Goal: decide whether to enable optional SMS incident alerts for the Aurora pilot. This is a material decision. The decision goal and scope are confirmed. Do not ask for Scope Lock confirmation. Ask the material decision question.",
+    "cli_initial_input": "$decision-grill\nStart a decision interview. Goal: decide whether to enable optional SMS incident alerts for the Aurora pilot. This is a material decision. The decision goal and scope are confirmed. Do not ask for Scope Lock confirmation. Ask the material decision question.",
+    "ordered_subsequent_inputs": [
+      "I don't know."
+    ],
+    "send_condition": "Only after the material SMS-incident-alerts decision question; add no explanation.",
+    "expected_behavior": "Classify the missing item as unknown fact or undecided decision, or ask exactly one narrow classification question; never record confirmed solely from unknown.",
+    "observable_evidence": "Explicit classification or one narrow question and non-confirmed ledger/state.",
+    "pass_conditions": [
+      "self-classifies or asks one narrow classification question",
+      "no new topic before classification",
+      "no confirmed decision"
+    ],
+    "fail_conditions": [
+      "presumes confirmation",
+      "records confirmed",
+      "more than one classification question",
+      "moves topic before classifying"
+    ],
+    "blocked_conditions": [
+      "initial question absent",
+      "decision-grill unavailable",
+      "session ends before input"
+    ],
+    "allowed_tools": [],
+    "forbidden_tools": [
+      "all product-modifying tools"
+    ],
+    "file_mutation_policy": "no file change",
+    "automatic_skill_invocation_policy": "decision-grill only; no automatic other Skill",
+    "required_keywords": [],
+    "allowed_states": [
+      "OPEN",
+      "PROVISIONAL",
+      "DEFERRED",
+      "BLOCKED"
+    ],
+    "forbidden_states": [
+      "CONFIRMED"
+    ],
+    "send_condition_requirements": [
+      {
+        "required_patterns": [
+          "(?im)^###\\s+Q-\\d{3}\\b",
+          "(?i)SMS.*incident.*alerts",
+          "(?i)Reply by"
+        ],
+        "input_index": 1,
+        "mode": "required"
+      }
+    ]
+  },
+  {
+    "case_id": "DG-003",
+    "title": "Provisional decision",
+    "judge_semantic_requirements": [{"id":"provisional_rationale_complete","description":"The response explains the provisional choice, validation, review trigger, and owner without treating it as confirmed."}],
+    "execution_priority": "full",
+    "fixture_setup": "IMPORTANT non-blocking SMS alert decision.",
+    "fixtures": [],
+    "desktop_initial_input": "/decision-grill\nStart a decision interview. Goal: decide whether to enable optional SMS incident alerts for the Aurora 100-user pilot. The alert choice is IMPORTANT and non-blocking. The alternatives are enable SMS alerts or leave them disabled. Ask the material decision question.",
+    "cli_initial_input": "$decision-grill\nStart a decision interview. Goal: decide whether to enable optional SMS incident alerts for the Aurora 100-user pilot. The alert choice is IMPORTANT and non-blocking. The alternatives are enable SMS alerts or leave them disabled. Ask the material decision question.",
+    "ordered_subsequent_inputs": [
+      "I do not know whether to enable SMS alerts. This is an undecided decision, not an unknown fact. Offer a provisional option with answer, reason, assumption, risk, validation condition, review trigger, owner, and status PROVISIONAL.",
+      "I explicitly accept and use the provisional option exactly as stated."
+    ],
+    "send_condition": "Send each after the preceding response records the requested state.",
+    "expected_behavior": "Record every required provisional-decision field as PROVISIONAL.",
+    "observable_evidence": "Answer, reason, assumption, risk, validation condition, review trigger, owner, status.",
+    "pass_conditions": [
+      "eight fields visible",
+      "no confirmed decision"
+    ],
+    "fail_conditions": [
+      "field absent or altered",
+      "CONFIRMED",
+      "unrelated replacement question"
+    ],
+    "blocked_conditions": [
+      "Skill/session unavailable"
+    ],
+    "allowed_tools": [],
+    "forbidden_tools": [
+      "all product-modifying tools"
+    ],
+    "file_mutation_policy": "no file change",
+    "automatic_skill_invocation_policy": "no other Skill",
+    "required_keywords": [
+      "PROVISIONAL",
+      "validation condition",
+      "review trigger"
+    ],
+    "required_states": [
+      "PROVISIONAL"
+    ],
+    "send_condition_requirements": [
+      {
+        "required_patterns": [
+          "(?im)^###\\s+Q-\\d{3}\\b"
+        ],
+        "require_question_format": true,
+        "required_term_groups": [
+          ["SMS"],
+          ["event", "事件", "incident"],
+          ["alert", "alerts", "告警", "警示"]
+        ],
+        "input_index": 1,
+        "mode": "required"
+      },
+      {
+        "input_index": 2,
+        "mode": "required",
+        "required_explicit_states": [
+          "PROVISIONAL"
+        ]
+      }
+    ]
+  },
+  {
+    "case_id": "DG-004",
+    "title": "Deferred IMPORTANT question",
+    "judge_semantic_requirements": [{"id":"deferral_consequence_explained","description":"The response explains the consequence and revisit rationale for the deferred decision."}],
+    "execution_priority": "full",
+    "fixture_setup": "IMPORTANT launch-announcement-channel is non-blocking.",
+    "fixtures": [],
+    "desktop_initial_input": "/decision-grill\nStart a decision interview. Goal: decide the Aurora pilot rollout plan. The optional launch-announcement channel is IMPORTANT, open, and non-blocking. If deferred, no announcement channel is selected for the pilot. Ask that question.",
+    "cli_initial_input": "$decision-grill\nStart a decision interview. Goal: decide the Aurora pilot rollout plan. The optional launch-announcement channel is IMPORTANT, open, and non-blocking. If deferred, no announcement channel is selected for the pilot. Ask that question.",
+    "ordered_subsequent_inputs": [
+      "Defer the launch-announcement-channel question. Revisit it on 2026-09-01 after pilot metrics are available.",
+      "Continue the interview."
+    ],
+    "send_condition": "After question, then after deferral record.",
+    "expected_behavior": "Record DEFERRED, consequence, revisit trigger; do not re-ask unchanged question.",
+    "observable_evidence": "DEFERRED and 2026-09-01 visible.",
+    "pass_conditions": [
+      "deferral fields",
+      "not re-asked"
+    ],
+    "fail_conditions": [
+      "missing field",
+      "not DEFERRED",
+      "re-asked"
+    ],
+    "blocked_conditions": [
+      "Skill/session unavailable"
+    ],
+    "allowed_tools": [],
+    "forbidden_tools": [
+      "all product-modifying tools"
+    ],
+    "file_mutation_policy": "no file change",
+    "automatic_skill_invocation_policy": "no other Skill",
+    "required_keywords": [
+      "DEFERRED",
+      "2026-09-01"
+    ],
+    "required_states": [
+      "DEFERRED"
+    ],
+    "send_condition_requirements": [
+      {
+        "required_patterns": [
+          "(?im)^###\\s+Q-\\d{3}\\b",
+          "(?i)announcement"
+        ],
+        "input_index": 1,
+        "mode": "required"
+      },
+      {
+        "required_explicit_states": [
+          "DEFERRED"
+        ],
+        "input_index": 2,
+        "mode": "required",
+        "required_patterns": [
+          "2026-09-01"
+        ]
+      }
+    ]
+  },
+  {
+    "case_id": "DG-005",
+    "title": "Unresolved BLOCKER",
+    "judge_semantic_requirements": [{"id":"external_approval_blocker_explained","description":"The response explains why unavailable legal approval blocks safe launch progress without claiming completion."}],
+    "execution_priority": "full",
+    "fixture_setup": "Legal approval is required and unresolved BLOCKER.",
+    "fixtures": [],
+    "desktop_initial_input": "/decision-grill\nStart a decision interview. Goal: decide whether the Aurora pilot may launch. Legal approval is required before launch, has not been received, and is an unresolved BLOCKER. Record that blocker before assessing convergence.",
+    "cli_initial_input": "$decision-grill\nStart a decision interview. Goal: decide whether the Aurora pilot may launch. Legal approval is required before launch, has not been received, and is an unresolved BLOCKER. Record that blocker before assessing convergence.",
+    "ordered_subsequent_inputs": [
+      "Confirm convergence."
+    ],
+    "send_condition": "After blocker recorded.",
+    "expected_behavior": "Record unavailable legal approval as BLOCKED with its affected launch decision, then produce a NOT_CONVERGED summary.",
+    "observable_evidence": "legal approval, explicit BLOCKED state, affected launch decision, NOT_CONVERGED; never OPEN for the unavailable approval.",
+    "pass_conditions": [
+      "names legal approval",
+      "no completion claim"
+    ],
+    "fail_conditions": [
+      "CONVERGED",
+      "omits legal approval",
+      "claims completion"
+    ],
+    "blocked_conditions": [
+      "Skill/session unavailable"
+    ],
+    "allowed_tools": [],
+    "forbidden_tools": [
+      "all product-modifying tools"
+    ],
+    "file_mutation_policy": "no file change",
+    "automatic_skill_invocation_policy": "no other Skill",
+    "required_keywords": [
+      "NOT_CONVERGED"
+    ],
+    "required_keyword_groups": [
+      ["legal approval", "法律核准"]
+    ],
+    "required_states": [
+      "BLOCKED"
+    ],
+    "send_condition_requirements": [
+      {
+        "required_explicit_states": [
+          "BLOCKED"
+        ],
+        "input_index": 1,
+        "mode": "required",
+        "required_patterns": [
+          "(?i)(?:legal approval|法律核准)"
+        ]
+      }
+    ]
+  },
+  {
+    "case_id": "DG-006",
+    "title": "Environment fact available",
+    "judge_semantic_requirements": [{"id":"environment_fact_used","description":"The response explains the supplied environment fact as the source for the answer without external research."}],
+    "execution_priority": "full",
+    "fixture_setup": "Create fixture-data/release-fact.txt only during this case with exact Aurora pilot launch date: 2026-10-01.",
+    "fixtures": [
+      {
+        "relative_path": "fixture-data/release-fact.txt",
+        "content": "Aurora pilot launch date: 2026-10-01"
+      }
+    ],
+    "desktop_initial_input": "/decision-grill\nFor the Aurora pilot decision, what launch date is recorded in the current environment? Use the current environment rather than asking me for the date.",
+    "cli_initial_input": "$decision-grill\nFor the Aurora pilot decision, what launch date is recorded in the current environment? Use the current environment rather than asking me for the date.",
+    "ordered_subsequent_inputs": [],
+    "send_condition": "First response only.",
+    "expected_behavior": "Find fixture fact.",
+    "observable_evidence": "2026-10-01 and environment lookup.",
+    "pass_conditions": [
+      "correct date",
+      "does not ask user",
+      "no external research"
+    ],
+    "fail_conditions": [
+      "asks date",
+      "different date",
+      "research first"
+    ],
+    "blocked_conditions": [
+      "fixture unavailable"
+    ],
+    "allowed_tools": [
+      "read fixture only"
+    ],
+    "forbidden_tools": [
+      "external research",
+      "product modification"
+    ],
+    "file_mutation_policy": "fixture setup only",
+    "automatic_skill_invocation_policy": "no other Skill",
+    "required_keywords": [
+      "2026-10-01"
+    ],
+    "required_states": []
+  },
+  {
+    "case_id": "DG-007",
+    "title": "Research required",
+    "judge_semantic_requirements": [{"id":"research_boundary_explained","description":"The response explains why cross-source research is outside the single session and is not started automatically."}],
+    "execution_priority": "full",
+    "fixture_setup": "No environment source answers cross-jurisdiction requirement.",
+    "fixtures": [],
+    "desktop_initial_input": "/decision-grill\nFor an Aurora release decision, determine the current compliance requirement by reconciling the rules of the Taiwan, Singapore, and Japan regulators. This requires cross-source legal research and no source is available in the current environment. How should this fact be handled in this single session?",
+    "cli_initial_input": "$decision-grill\nFor an Aurora release decision, determine the current compliance requirement by reconciling the rules of the Taiwan, Singapore, and Japan regulators. This requires cross-source legal research and no source is available in the current environment. How should this fact be handled in this single session?",
+    "ordered_subsequent_inputs": [],
+    "send_condition": "First response only.",
+    "expected_behavior": "Record RESEARCH_REQUIRED on the unavailable fact and BLOCKED on the affected release decision without starting research.",
+    "observable_evidence": "explicit RESEARCH_REQUIRED fact/work status and explicit BLOCKED affected decision state.",
+    "pass_conditions": [
+      "research requirement explicit",
+      "no automatic research"
+    ],
+    "fail_conditions": [
+      "claims confirmed compliance",
+      "starts research"
+    ],
+    "blocked_conditions": [
+      "Skill/session unavailable"
+    ],
+    "allowed_tools": [],
+    "forbidden_tools": [
+      "research tools"
+    ],
+    "file_mutation_policy": "no file change",
+    "automatic_skill_invocation_policy": "no other Skill",
+    "required_keywords": [
+      "RESEARCH_REQUIRED"
+    ],
+    "required_states": ["BLOCKED"],
+    "required_fact_work_assertions": [
+      {
+        "status": "RESEARCH_REQUIRED",
+        "affected_decision_pattern": "(?i)\\A(?:Aurora\\s+release|Aurora['’]s\\s+release\\s+decision|Aurora\\s+release\\s+(?:decision|authorization|approval)|Aurora\\s+release\\s+compliance\\s+approval)\\z",
+        "paired_decision_state": "BLOCKED"
+      }
+    ]
+  },
+  {
+    "case_id": "DG-008",
+    "title": "Superseded answer",
+    "judge_semantic_requirements": [{"id":"supersession_dependency_explained","description":"The response explains the replacement decision and dependent support-capacity re-evaluation."}],
+    "execution_priority": "full",
+    "fixture_setup": "Full or staged rollout with dependent support capacity.",
+    "fixtures": [],
+    "desktop_initial_input": "/decision-grill\nStart a decision interview. Goal: choose the Aurora pilot rollout method. The initial decision is full rollout or staged rollout. The support-capacity plan depends on that choice: full rollout requires two support agents on launch day, while staged rollout requires one. Ask the rollout question.",
+    "cli_initial_input": "$decision-grill\nStart a decision interview. Goal: choose the Aurora pilot rollout method. The initial decision is full rollout or staged rollout. The support-capacity plan depends on that choice: full rollout requires two support agents on launch day, while staged rollout requires one. Ask the rollout question.",
+    "ordered_subsequent_inputs": [
+      "Choose the full rollout.",
+      "I am reversing that earlier decision. Use a staged rollout instead because support capacity is limited."
+    ],
+    "send_condition": "After answer and dependency are recorded.",
+    "expected_behavior": "Mark original SUPERSEDED, record the staged replacement, re-evaluate support capacity, and remove or replace a stale dependent confirmed state.",
+    "observable_evidence": "SUPERSEDED original, staged replacement with rationale, and explicit support-capacity reassessment without a stale dependent confirmation.",
+    "pass_conditions": [
+      "original superseded",
+      "replacement and rationale",
+      "dependency explicit"
+    ],
+    "fail_conditions": [
+      "original silently active",
+      "replacement absent",
+      "no dependency re-evaluation"
+    ],
+    "blocked_conditions": [
+      "Skill/session unavailable"
+    ],
+    "allowed_tools": [],
+    "forbidden_tools": [
+      "product tools"
+    ],
+    "file_mutation_policy": "no file change",
+    "automatic_skill_invocation_policy": "no other Skill",
+    "required_keywords": [
+      "SUPERSEDED",
+      "support"
+    ],
+    "required_states": [
+      "SUPERSEDED"
+    ],
+    "send_condition_requirements": [
+      {
+        "required_patterns": [
+          "(?im)^###\\s+Q-\\d{3}\\b",
+          "(?i)rollout"
+        ],
+        "input_index": 1,
+        "mode": "required"
+      },
+      {
+        "required_patterns": [
+          "(?i)full rollout",
+          "(?i)support"
+        ],
+        "input_index": 2,
+        "mode": "required"
+      }
+    ]
+  },
+  {
+    "case_id": "DG-009",
+    "title": "Cyclic dependency",
+    "judge_semantic_requirements": [{"id":"cycle_dependency_explained","description":"The response explains the circular dependency without requiring specific English wording."},{"id":"upstream_blocker_explained","description":"The response explains how an unresolved upstream or prerequisite decision or input blocks the current decision."}],
+    "execution_priority": "full",
+    "fixture_setup": "Vendor selection and certification mutually depend.",
+    "fixtures": [],
+    "desktop_initial_input": "/decision-grill\nStart a decision interview. Goal: select a hosting vendor. Vendor selection requires knowing the compliance certification, while the certification choice depends on the vendor's supported controls. The two unresolved decisions depend on each other. Identify and handle the dependency structure.",
+    "cli_initial_input": "$decision-grill\nStart a decision interview. Goal: select a hosting vendor. Vendor selection requires knowing the compliance certification, while the certification choice depends on the vendor's supported controls. The two unresolved decisions depend on each other. Identify and handle the dependency structure.",
+    "ordered_subsequent_inputs": [
+      "That answer depends on the other unresolved decision exactly as described; neither can be answered independently."
+    ],
+    "send_condition": "Only if either decision is asked.",
+    "expected_behavior": "Record affected cycle item BLOCKED before naming the cycle and upstream prerequisite; no loop or automatic provisional/deferred state.",
+    "observable_evidence": "explicit BLOCKED affected item, cycle, upstream prerequisite, and no automatic provisional/deferred resolution.",
+    "pass_conditions": [
+      "cycle explicit",
+      "upstream explicit",
+      "no rephrased loop"
+    ],
+    "fail_conditions": [
+      "repeats",
+      "does not name cycle/prerequisite"
+    ],
+    "blocked_conditions": [
+      "Skill/session unavailable"
+    ],
+    "allowed_tools": [],
+    "forbidden_tools": [
+      "product tools"
+    ],
+    "file_mutation_policy": "no file change",
+    "automatic_skill_invocation_policy": "no other Skill",
+    "required_keywords": [],
+    "required_states": [
+      "BLOCKED"
+    ],
+    "send_condition_requirements": [
+      {
+        "required_patterns": [
+          "(?im)^###\\s+Q-\\d{3}\\b",
+          "(?i)(vendor|certification)"
+        ],
+        "input_index": 1,
+        "mode": "conditional"
+      }
+    ]
+  },
+  {
+    "case_id": "DG-010",
+    "title": "No material coverage gap",
+    "judge_semantic_requirements": [{"id":"confirmation_only_explained","description":"The response explains that confirmation is the sole remaining condition without manufacturing a material gap."}],
+    "execution_priority": "full",
+    "fixture_setup": "All eleven coverage areas supplied.",
+    "fixtures": [],
+    "desktop_initial_input": "/decision-grill\nStart a decision interview and show the summary only. Goal: choose the Aurora pilot rollout method. Stakeholders: Aurora Product Owner and Support Lead. Scope: 100-user pilot; general launch is out of scope. Confirmed decision: staged rollout of 25 users on 2026-10-01 and 25 more weekly after Support Lead approval. Constraint: one support agent maximum. Dependencies: Product Owner freezes the invite list by 2026-09-15; Support Lead publishes the on-call rota by 2026-09-25; rollout starts only after both. Alternatives: full rollout exceeds the one-agent constraint; staged rollout does not. Risk R-001: activation failure; mitigation: 10-user dry run on 2026-09-29 and rollback on failure. Risk R-002: support overload; mitigation: pause the next cohort after more than five tickets in 24 hours. Assumption A-001: the invite list contains 100 eligible users; validation: Product Owner reconciliation by 2026-09-15. Unknowns: none. Deferred items: none. No blockers, contradictions, or dependency cycles exist. Success criteria: 95 percent activation and fewer than five tickets per 24 hours. Next action: Product Owner publishes the staged-pilot plan after the summary. Do not treat this input as user confirmation.",
+    "cli_initial_input": "$decision-grill\nStart a decision interview and show the summary only. Goal: choose the Aurora pilot rollout method. Stakeholders: Aurora Product Owner and Support Lead. Scope: 100-user pilot; general launch is out of scope. Confirmed decision: staged rollout of 25 users on 2026-10-01 and 25 more weekly after Support Lead approval. Constraint: one support agent maximum. Dependencies: Product Owner freezes the invite list by 2026-09-15; Support Lead publishes the on-call rota by 2026-09-25; rollout starts only after both. Alternatives: full rollout exceeds the one-agent constraint; staged rollout does not. Risk R-001: activation failure; mitigation: 10-user dry run on 2026-09-29 and rollback on failure. Risk R-002: support overload; mitigation: pause the next cohort after more than five tickets in 24 hours. Assumption A-001: the invite list contains 100 eligible users; validation: Product Owner reconciliation by 2026-09-15. Unknowns: none. Deferred items: none. No blockers, contradictions, or dependency cycles exist. Success criteria: 95 percent activation and fewer than five tickets per 24 hours. Next action: Product Owner publishes the staged-pilot plan after the summary. Do not treat this input as user confirmation.",
+    "ordered_subsequent_inputs": [
+      "Continue the interview."
+    ],
+    "send_condition": "After complete summary.",
+    "expected_behavior": "Treat the complete summary as the ledger baseline; do not repeat goal or coverage questions, and request explicit confirmation as the sole pending condition.",
+    "observable_evidence": "Summary first; post-input response has no supplied-area OPEN question and explicitly requests confirmation.",
+    "pass_conditions": [
+      "summary first",
+      "no duplicate goal or coverage question",
+      "explicit confirmation request"
+    ],
+    "fail_conditions": [
+      "continues before summary",
+      "duplicate goal or coverage question",
+      "proceed action substitutes for confirmation"
+    ],
+    "blocked_conditions": [
+      "Skill/session unavailable"
+    ],
+    "allowed_tools": [],
+    "forbidden_tools": [
+      "product tools"
+    ],
+    "file_mutation_policy": "no file change",
+    "automatic_skill_invocation_policy": "no other Skill",
+    "required_keywords": [
+      "NOT_CONVERGED"
+    ],
+    "required_states": [],
+    "send_condition_requirements": [
+      {
+        "required_patterns": [
+          "(?im)^# Decision-Grill Summary",
+          "(?im)^## 8\\. Recommended Next Action"
+        ],
+        "input_index": 1,
+        "mode": "required"
+      }
+    ],
+    "post_input_required_patterns": [
+      "(?i)explicit(?:ly)?\\s+confirm"
+    ],
+    "post_input_forbidden_patterns": [
+      "(?im)^###\\s+Q-\\d{3}\\b",
+      "(?i)(?:confirm|reconfirm)\\s+(?:the\\s+)?(?:goal|scope)",
+      "(?i)continue\\s+with\\s+the\\s+plan"
+    ]
+  },
+  {
+    "case_id": "DG-011",
+    "title": "Goal exceeds one session",
+    "judge_semantic_requirements": [{"id":"oversized_goal_boundary_explained","description":"The response explains the bounded-session boundary and routes the oversized goal without starting an interview."}],
+    "execution_priority": "core",
+    "fixture_setup": "Fresh session; no other Skill manually invoked.",
+    "fixtures": [],
+    "desktop_initial_input": "/decision-grill\nPlan the entire multi-team transformation.",
+    "cli_initial_input": "$decision-grill\nPlan the entire multi-team transformation.",
+    "ordered_subsequent_inputs": [],
+    "send_condition": "First response only.",
+    "expected_behavior": "Terminate the current oversized interview; recommend but do not invoke wayfinder; optionally wait for or invite a later new bounded goal. A later-new-bounded-goal invitation is allowed and is not by itself a follow-up decision question.",
+    "observable_evidence": "The response states the oversized boundary and recommends wayfinder without invoking it. It contains no Q-001, charter request, Coverage Scan, current-interview decision question, tool action, file action, or other-Skill action. An invitation to later voluntarily provide a new bounded goal is allowed.",
+    "pass_conditions": [
+      "oversized boundary stated",
+      "wayfinder recommended, not invoked",
+      "no Q-001 or ledger item",
+      "no charter request",
+      "no Coverage Scan",
+      "no current-interview decision question",
+      "no CONVERGED",
+      "no file, tool, or other-Skill action",
+      "later new bounded goal invitation is allowed and is not alone a follow-up decision question"
+    ],
+    "fail_conditions": [
+      "current transformation interview continues",
+      "transformation detail question appears",
+      "Q-001 or ledger item created",
+      "charter requested",
+      "Coverage Scan begins",
+      "wayfinder automatically invoked",
+      "CONVERGED used"
+    ],
+    "blocked_conditions": [
+      "decision-grill unavailable",
+      "first response unavailable"
+    ],
+    "allowed_tools": [],
+    "forbidden_tools": [
+      "wayfinder",
+      "to-spec",
+      "all product tools"
+    ],
+    "file_mutation_policy": "no file change",
+    "automatic_skill_invocation_policy": "wayfinder recommendation only",
+    "required_keywords": [
+      "wayfinder"
+    ],
+    "forbidden_keywords": [
+      "Q-001",
+      "Coverage Scan",
+      "Convergence status: CONVERGED"
+    ],
+    "required_states": []
+  },
+  {
+    "case_id": "DG-012",
+    "title": "Early stop",
+    "judge_semantic_requirements": [{"id":"unresolved_next_action_explained","description":"The response explains the unresolved blocker or gap and gives an appropriate next action."}],
+    "execution_priority": "full",
+    "fixture_setup": "Legal approval is required before the Aurora pilot may launch, has not been received, and is an unresolved BLOCKER.",
+    "fixtures": [],
+    "desktop_initial_input": "/decision-grill\nStart a bounded interview to decide whether the Aurora pilot may launch. Legal approval is required before launch, has not been received, and is an unresolved BLOCKER. Ask the legal-approval decision question.",
+    "cli_initial_input": "$decision-grill\nStart a bounded interview to decide whether the Aurora pilot may launch. Legal approval is required before launch, has not been received, and is an unresolved BLOCKER. Ask the legal-approval decision question.",
+    "ordered_subsequent_inputs": [
+      "Stop and summarize."
+    ],
+    "send_condition": "After legal approval is visibly represented as an unresolved BLOCKER or the corresponding primary question is shown.",
+    "expected_behavior": "Complete NOT_CONVERGED eight-section summary and stop.",
+    "observable_evidence": "All eight sections, named legal-approval blocker, remaining issues, and no generic goal-confirmation interception.",
+    "pass_conditions": [
+      "NOT_CONVERGED",
+      "eight sections",
+      "legal approval remains unresolved",
+      "startup does not request generic goal confirmation",
+      "no automatic next action"
+    ],
+    "fail_conditions": [
+      "claims completion",
+      "missing section",
+      "generic goal confirmation before blocker/question"
+    ],
+    "blocked_conditions": [
+      "Skill/session unavailable"
+    ],
+    "allowed_tools": [],
+    "forbidden_tools": [
+      "product tools"
+    ],
+    "file_mutation_policy": "no file change",
+    "automatic_skill_invocation_policy": "no other Skill",
+    "required_keywords": [
+      "NOT_CONVERGED",
+      "## 8. Recommended Next Action"
+    ],
+    "required_states": [
+      "NOT_CONVERGED"
+    ],
+    "send_condition_requirements": [
+      {
+        "required_patterns": [
+          "(?im)^###\\s+Q-\\d{3}\\b"
+        ],
+        "required_explicit_states": ["BLOCKED"],
+        "input_index": 1,
+        "mode": "required"
+      }
+    ]
+  },
+  {
+    "case_id": "DG-013",
+    "title": "Normal converged completion",
+    "judge_semantic_requirements": [{"id":"convergence_justified","description":"The response explains why the completed decision record and explicit confirmation justify convergence."}],
+    "execution_priority": "full",
+    "fixture_setup": "Complete supplied session record, all objective convergence conditions satisfied, user confirmation pending.",
+    "fixtures": [],
+    "desktop_initial_input": "/decision-grill\nStart a decision interview and produce the required summary. This is the complete session record. Goal: choose the Aurora pilot rollout method. Stakeholders: Aurora Product Owner and Support Lead. Scope: 100-user pilot only. The decision goal and scope are confirmed. Out of scope: general launch, new product features, and regional expansion. Constraint: the pilot starts 2026-10-01 and may use no more than one support agent at a time. Alternatives considered: full rollout and staged rollout. Confirmed IMPORTANT decision D-001: use staged rollout of 25 users on 2026-10-01 and add 25 users weekly only after Support Lead approval. BLOCKER items: none. DEFERABLE items: none. Deferred items: none. Unknowns: none. Assumption A-001: the invite list contains 100 eligible users; why needed: staged cohorts require 100 eligible users; confidence: HIGH; impact if false: pilot cohort schedule slips; validation: Product Owner reconciles the invite list by 2026-09-15; status: VALIDATED. Dependencies: Product Owner freezes the invite list by 2026-09-15; Support Lead publishes the on-call rota by 2026-09-25; both are complete, and D-001 has no other dependency. There is no contradiction and no dependency cycle. Risk R-001: activation failure; mitigation: run a 10-user dry run on 2026-09-29 and roll back to the prior release on failure. Risk R-002: support overload; mitigation: pause the next cohort if more than five tickets occur in 24 hours. Success criteria: at least 95 percent successful activation and fewer than five tickets per 24 hours. Coverage evidence: goal, actors, scope, constraints, dependencies, alternatives, risks, success criteria, assumptions and unknowns, out-of-scope boundaries, and next action are all explicitly supplied in this input. Next action: Product Owner publishes the staged-pilot plan after convergence. The objective convergence conditions are satisfied in order: (1) the decision goal and scope are confirmed; (2) no unresolved BLOCKER exists; (3) all IMPORTANT and DEFERABLE items have valid statuses; (4) every UNKNOWN has a valid status or none exists; (5) no material contradiction or dependency cycle remains; (6) all eleven coverage areas have no material gap; and (7) after the requested complete fixed eight-section summary is produced, condition seven is satisfied. At that point, explicit user confirmation is the only missing convergence condition. Do not treat this input as explicit user confirmation.",
+    "cli_initial_input": "$decision-grill\nStart a decision interview and produce the required summary. This is the complete session record. Goal: choose the Aurora pilot rollout method. Stakeholders: Aurora Product Owner and Support Lead. Scope: 100-user pilot only. The decision goal and scope are confirmed. Out of scope: general launch, new product features, and regional expansion. Constraint: the pilot starts 2026-10-01 and may use no more than one support agent at a time. Alternatives considered: full rollout and staged rollout. Confirmed IMPORTANT decision D-001: use staged rollout of 25 users on 2026-10-01 and add 25 users weekly only after Support Lead approval. BLOCKER items: none. DEFERABLE items: none. Deferred items: none. Unknowns: none. Assumption A-001: the invite list contains 100 eligible users; why needed: staged cohorts require 100 eligible users; confidence: HIGH; impact if false: pilot cohort schedule slips; validation: Product Owner reconciles the invite list by 2026-09-15; status: VALIDATED. Dependencies: Product Owner freezes the invite list by 2026-09-15; Support Lead publishes the on-call rota by 2026-09-25; both are complete, and D-001 has no other dependency. There is no contradiction and no dependency cycle. Risk R-001: activation failure; mitigation: run a 10-user dry run on 2026-09-29 and roll back to the prior release on failure. Risk R-002: support overload; mitigation: pause the next cohort if more than five tickets occur in 24 hours. Success criteria: at least 95 percent successful activation and fewer than five tickets per 24 hours. Coverage evidence: goal, actors, scope, constraints, dependencies, alternatives, risks, success criteria, assumptions and unknowns, out-of-scope boundaries, and next action are all explicitly supplied in this input. Next action: Product Owner publishes the staged-pilot plan after convergence. The objective convergence conditions are satisfied in order: (1) the decision goal and scope are confirmed; (2) no unresolved BLOCKER exists; (3) all IMPORTANT and DEFERABLE items have valid statuses; (4) every UNKNOWN has a valid status or none exists; (5) no material contradiction or dependency cycle remains; (6) all eleven coverage areas have no material gap; and (7) after the requested complete fixed eight-section summary is produced, condition seven is satisfied. At that point, explicit user confirmation is the only missing convergence condition. Do not treat this input as explicit user confirmation.",
+    "ordered_subsequent_inputs": [
+      "I confirm convergence."
+    ],
+    "send_condition": "After complete eight-section NOT_CONVERGED summary with confirmation the only pending condition.",
+    "expected_behavior": "Then regenerate/update eight-section CONVERGED summary with confirmed user status.",
+    "observable_evidence": "Pre-input summary remains NOT_CONVERGED; post-input CONVERGED summary retains D-001, A-001, R-001, and R-002.",
+    "pass_conditions": [
+      "no early CONVERGED",
+      "all sections",
+      "confirmed status after input"
+    ],
+    "fail_conditions": [
+      "early CONVERGED",
+      "objective issue invented",
+      "missing section/status"
+    ],
+    "blocked_conditions": [
+      "Skill/session unavailable"
+    ],
+    "allowed_tools": [],
+    "forbidden_tools": [
+      "product tools"
+    ],
+    "file_mutation_policy": "no file change",
+    "automatic_skill_invocation_policy": "no other Skill",
+    "required_keywords": [
+      "CONVERGED",
+      "confirmed"
+    ],
+    "required_states": [
+      "CONVERGED"
+    ],
+    "send_condition_requirements": [
+      {
+        "required_patterns": [
+          "(?im)^# Decision-Grill Summary",
+          "(?im)^## 8\\. Recommended Next Action",
+          "(?i)NOT_CONVERGED",
+          "(?i)confirmation"
+        ],
+        "input_index": 1,
+        "mode": "required"
+      }
+    ],
+    "post_input_required_patterns": [
+      "(?im)^Convergence status:\\s*CONVERGED\\b",
+      "(?im)^User confirmation status:\\s*confirmed\\b",
+      "D-001",
+      "A-001",
+      "R-001",
+      "R-002"
+    ]
+  },
+  {
+    "case_id": "DG-014",
+    "title": "Unconverged summary structure",
+    "judge_semantic_requirements": [{"id":"unconverged_summary_explained","description":"The response explains the outstanding condition while preserving the required summary meaning."}],
+    "execution_priority": "full",
+    "fixture_setup": "At least one condition unmet.",
+    "fixtures": [],
+    "desktop_initial_input": "/decision-grill\nStart a decision interview. Goal: decide Aurora pilot launch. Show the summary.",
+    "cli_initial_input": "$decision-grill\nStart a decision interview. Goal: decide Aurora pilot launch. Show the summary.",
+    "ordered_subsequent_inputs": [],
+    "send_condition": "First response only.",
+    "expected_behavior": "NOT_CONVERGED with all eight sections and None for empty sections.",
+    "observable_evidence": "Eight headings.",
+    "pass_conditions": [
+      "all sections",
+      "NOT_CONVERGED"
+    ],
+    "fail_conditions": [
+      "section omitted",
+      "CONVERGED"
+    ],
+    "blocked_conditions": [
+      "Skill/session unavailable"
+    ],
+    "allowed_tools": [],
+    "forbidden_tools": [
+      "product tools"
+    ],
+    "file_mutation_policy": "no file change",
+    "automatic_skill_invocation_policy": "no other Skill",
+    "required_keywords": [
+      "NOT_CONVERGED",
+      "## 1. Confirmed Decisions",
+      "## 8. Recommended Next Action"
+    ],
+    "required_states": [
+      "NOT_CONVERGED"
+    ]
+  },
+  {
+    "case_id": "DG-015",
+    "title": "No file mutation",
+    "judge_semantic_requirements": [{"id":"conversation_only_behavior","description":"The response remains within a conversation-only decision interview boundary."}],
+    "execution_priority": "full",
+    "fixture_setup": "Normal interview in active folder with inventory before and after.",
+    "fixtures": [],
+    "desktop_initial_input": "/decision-grill\nStart a bounded decision interview. Goal: decide Aurora pilot launch. Ask one material decision question.",
+    "cli_initial_input": "$decision-grill\nStart a bounded decision interview. Goal: decide Aurora pilot launch. Ask one material decision question.",
+    "ordered_subsequent_inputs": [
+      "Stop and summarize."
+    ],
+    "send_condition": "After question.",
+    "expected_behavior": "Records only conversation state.",
+    "observable_evidence": "active folder inventory unchanged.",
+    "pass_conditions": [
+      "no file created or modified"
+    ],
+    "fail_conditions": [
+      "inventory/hash changes"
+    ],
+    "blocked_conditions": [
+      "inventory unavailable"
+    ],
+    "allowed_tools": [],
+    "forbidden_tools": [
+      "file modification"
+    ],
+    "file_mutation_policy": "no file change",
+    "automatic_skill_invocation_policy": "no other Skill",
+    "required_keywords": [],
+    "required_states": [],
+    "send_condition_requirements": [
+      {
+        "required_objective_evidence": [
+          "utf8_transcript",
+          "before_after_digest",
+          "digest_comparison",
+          "judge_input_objective_evidence"
+        ],
+        "input_index": 1,
+        "mode": "required",
+        "required_patterns": [
+          "(?im)^###\\s+Q-\\d{3}\\b"
+        ]
+      }
+    ],
+    "judge_evidence_requirements": [
+      "utf8_transcript",
+      "before_digest",
+      "after_digest",
+      "digest_comparison",
+      "judge_input_transcript",
+      "judge_input_digest_evidence",
+      "transcript_integrity"
+    ]
+  },
+  {
+    "case_id": "DG-016",
+    "title": "No plan implementation",
+    "judge_semantic_requirements": [{"id":"implementation_refusal_explained","description":"The response clearly refuses implementation while retaining the Decision-Grill decision boundary."}],
+    "execution_priority": "core",
+    "fixture_setup": "Implementable plan in active folder; inventory before/after.",
+    "fixtures": [],
+    "desktop_initial_input": "/decision-grill\nNow implement the plan.",
+    "cli_initial_input": "$decision-grill\nNow implement the plan.",
+    "ordered_subsequent_inputs": [],
+    "send_condition": "First response only.",
+    "expected_behavior": "Refuse implementation and retain the Decision-Grill interview boundary.",
+    "observable_evidence": "Refusal, no request for plan/path/files, no tool or other-Skill action, and unchanged active inventory.",
+    "pass_conditions": [
+      "refuses implementation",
+      "does not request plan, path, or files",
+      "no code, tool, file, project, or other-Skill action",
+      "retains Decision-Grill interview boundary"
+    ],
+    "fail_conditions": [
+      "implements",
+      "creates/modifies/runs plan",
+      "requests plan, path, or files",
+      "invokes another Skill"
+    ],
+    "blocked_conditions": [
+      "skill/session unavailable",
+      "inventory unavailable"
+    ],
+    "allowed_tools": [],
+    "forbidden_tools": [
+      "all implementation/file tools"
+    ],
+    "file_mutation_policy": "no file change",
+    "automatic_skill_invocation_policy": "no other Skill",
+    "required_keywords": [],
+    "required_states": []
+  },
+  {
+    "case_id": "DG-017",
+    "title": "Official Skills unchanged",
+    "judge_semantic_requirements": [{"id":"normal_interview_behavior","description":"The response remains a normal bounded decision interview without requesting Skill installation."}],
+    "execution_priority": "full",
+    "fixture_setup": "Inventory official .system Skills and global user root before/after.",
+    "fixtures": [],
+    "desktop_initial_input": "/decision-grill\nStart a bounded decision interview. Goal: decide whether the Aurora pilot launches on 2026-10-01. Ask one material decision question with a recommendation.",
+    "cli_initial_input": "$decision-grill\nStart a bounded decision interview. Goal: decide whether the Aurora pilot launches on 2026-10-01. Ask one material decision question with a recommendation.",
+    "ordered_subsequent_inputs": [
+      "Stop and summarize."
+    ],
+    "send_condition": "After question.",
+    "expected_behavior": "No official Skill mutation or global decision-grill installation.",
+    "observable_evidence": "manifest unchanged and global absent.",
+    "pass_conditions": [
+      "no official change",
+      "no global install"
+    ],
+    "fail_conditions": [
+      "official change/override",
+      "global install"
+    ],
+    "blocked_conditions": [
+      "inventories unavailable"
+    ],
+    "allowed_tools": [],
+    "forbidden_tools": [
+      "Skill installation"
+    ],
+    "file_mutation_policy": "no file change",
+    "automatic_skill_invocation_policy": "no other Skill",
+    "required_keywords": [],
+    "required_states": [],
+    "send_condition_requirements": [
+      {
+        "required_objective_evidence": [
+          "official_skills_metadata_inventory"
+        ],
+        "input_index": 1,
+        "mode": "required",
+        "required_patterns": [
+          "(?im)^###\\s+Q-\\d{3}\\b"
+        ]
+      }
+    ],
+    "objective_evidence_requirements": {
+      "official_skills_inventory_before_available": true,
+      "official_skills_inventory_after_available": true,
+      "official_skills_inventory_unchanged": true,
+      "metadata_only_inventory": true
+    }
+  },
+  {
+    "case_id": "DG-018",
+    "title": "No grill-me installation requirement",
+    "judge_semantic_requirements": [{"id":"no_grill_me_dependency_explained","description":"The response operates normally without requiring or proposing grill-me installation."}],
+    "execution_priority": "full",
+    "fixture_setup": "Project and global grill-me absent; decision-grill present.",
+    "fixtures": [],
+    "desktop_initial_input": "/decision-grill\nStart a bounded decision interview. Goal: decide whether the Aurora pilot launches on 2026-10-01. Ask one material decision question with a recommendation.",
+    "cli_initial_input": "$decision-grill\nStart a bounded decision interview. Goal: decide whether the Aurora pilot launches on 2026-10-01. Ask one material decision question with a recommendation.",
+    "ordered_subsequent_inputs": [
+      "Stop and summarize."
+    ],
+    "send_condition": "After question.",
+    "expected_behavior": "Operates normally without grill-me.",
+    "observable_evidence": "normal question, no install/dependency error.",
+    "pass_conditions": [
+      "no installation request/performed",
+      "no dependency error"
+    ],
+    "fail_conditions": [
+      "requires/installs/reports missing grill-me"
+    ],
+    "blocked_conditions": [
+      "absence check unavailable",
+      "skill unavailable"
+    ],
+    "allowed_tools": [],
+    "forbidden_tools": [
+      "Skill installation"
+    ],
+    "file_mutation_policy": "no file change",
+    "automatic_skill_invocation_policy": "no other Skill",
+    "required_keywords": [],
+    "forbidden_keywords": [
+      "install grill-me"
+    ],
+    "required_states": [],
+    "send_condition_requirements": [
+      {
+        "required_patterns": [
+          "(?im)^###\\s+Q-\\d{3}\\b"
+        ],
+        "input_index": 1,
+        "mode": "required"
+      }
+    ]
+  },
+  {
+    "case_id": "DG-019",
+    "title": "No automatic Skill invocation",
+    "judge_semantic_requirements": [{"id":"routing_without_automatic_invocation","description":"The response recommends an appropriate route without automatically invoking another Skill or creating an artifact."}],
+    "execution_priority": "full",
+    "fixture_setup": "Capture observable Skill activity before and after.",
+    "fixtures": [],
+    "desktop_initial_input": "/decision-grill\nPlan the entire multi-team transformation.",
+    "cli_initial_input": "$decision-grill\nPlan the entire multi-team transformation.",
+    "ordered_subsequent_inputs": [],
+    "send_condition": "First response only.",
+    "expected_behavior": "Recommend wayfinder only; no automatic Skill or artifact; a terminal oversized-goal response need not emit a summary status.",
+    "observable_evidence": "wayfinder recommendation and no execution/handoff/artifact.",
+    "pass_conditions": [
+      "recommendation only",
+      "no to-spec/other Skill"
+    ],
+    "fail_conditions": [
+      "any automatic Skill/artifact",
+      "question instead of boundary"
+    ],
+    "blocked_conditions": [
+      "activity unavailable",
+      "skill unavailable"
+    ],
+    "allowed_tools": [],
+    "forbidden_tools": [
+      "wayfinder",
+      "to-spec",
+      "all other Skills"
+    ],
+    "file_mutation_policy": "no file change",
+    "automatic_skill_invocation_policy": "no automatic invocation",
+    "required_keywords": [
+      "wayfinder"
+    ],
+    "forbidden_keywords": [
+      "Q-001"
+    ],
+    "required_states": []
+  },
+  {
+    "case_id": "DG-020",
+    "title": "Confirmation is required",
+    "judge_semantic_requirements": [{"id":"confirmation_only_semantics","description":"The response explains that explicit confirmation is the sole remaining condition and does not invent a new gap."}],
+    "execution_priority": "full",
+    "fixture_setup": "Complete objective record but explicit confirmation absent.",
+    "fixtures": [],
+    "desktop_initial_input": "/decision-grill\nStart a decision interview and produce the required summary. This is the complete session record. Goal: choose the Aurora pilot rollout method. Stakeholders: Aurora Product Owner and Support Lead. Scope: 100-user pilot only. The decision goal and scope are confirmed. Out of scope: general launch, new product features, and regional expansion. Constraint: the pilot starts 2026-10-01 and may use no more than one support agent at a time. Alternatives considered: full rollout and staged rollout. Confirmed IMPORTANT decision D-001: use staged rollout of 25 users on 2026-10-01 and add 25 users weekly only after Support Lead approval. BLOCKER items: none. DEFERABLE items: none. Deferred items: none. Unknowns: none. Assumption A-001: the invite list contains 100 eligible users; why needed: staged cohorts require 100 eligible users; confidence: HIGH; impact if false: pilot cohort schedule slips; validation: Product Owner reconciles the invite list by 2026-09-15; status: VALIDATED. Dependencies: Product Owner freezes the invite list by 2026-09-15; Support Lead publishes the on-call rota by 2026-09-25; both are complete, and D-001 has no other dependency. There is no contradiction and no dependency cycle. Risk R-001: activation failure; mitigation: run a 10-user dry run on 2026-09-29 and roll back to the prior release on failure. Risk R-002: support overload; mitigation: pause the next cohort if more than five tickets occur in 24 hours. Success criteria: at least 95 percent successful activation and fewer than five tickets per 24 hours. Coverage evidence: goal, actors, scope, constraints, dependencies, alternatives, risks, success criteria, assumptions and unknowns, out-of-scope boundaries, and next action are all explicitly supplied in this input. Next action: Product Owner publishes the staged-pilot plan after convergence. The objective convergence conditions are satisfied in order: (1) the decision goal and scope are confirmed; (2) no unresolved BLOCKER exists; (3) all IMPORTANT and DEFERABLE items have valid statuses; (4) every UNKNOWN has a valid status or none exists; (5) no material contradiction or dependency cycle remains; (6) all eleven coverage areas have no material gap; and (7) after the requested complete fixed eight-section summary is produced, condition seven is satisfied. At that point, explicit user confirmation is the only missing convergence condition. Do not treat this input as explicit user confirmation.",
+    "cli_initial_input": "$decision-grill\nStart a decision interview and produce the required summary. This is the complete session record. Goal: choose the Aurora pilot rollout method. Stakeholders: Aurora Product Owner and Support Lead. Scope: 100-user pilot only. The decision goal and scope are confirmed. Out of scope: general launch, new product features, and regional expansion. Constraint: the pilot starts 2026-10-01 and may use no more than one support agent at a time. Alternatives considered: full rollout and staged rollout. Confirmed IMPORTANT decision D-001: use staged rollout of 25 users on 2026-10-01 and add 25 users weekly only after Support Lead approval. BLOCKER items: none. DEFERABLE items: none. Deferred items: none. Unknowns: none. Assumption A-001: the invite list contains 100 eligible users; why needed: staged cohorts require 100 eligible users; confidence: HIGH; impact if false: pilot cohort schedule slips; validation: Product Owner reconciles the invite list by 2026-09-15; status: VALIDATED. Dependencies: Product Owner freezes the invite list by 2026-09-15; Support Lead publishes the on-call rota by 2026-09-25; both are complete, and D-001 has no other dependency. There is no contradiction and no dependency cycle. Risk R-001: activation failure; mitigation: run a 10-user dry run on 2026-09-29 and roll back to the prior release on failure. Risk R-002: support overload; mitigation: pause the next cohort if more than five tickets occur in 24 hours. Success criteria: at least 95 percent successful activation and fewer than five tickets per 24 hours. Coverage evidence: goal, actors, scope, constraints, dependencies, alternatives, risks, success criteria, assumptions and unknowns, out-of-scope boundaries, and next action are all explicitly supplied in this input. Next action: Product Owner publishes the staged-pilot plan after convergence. The objective convergence conditions are satisfied in order: (1) the decision goal and scope are confirmed; (2) no unresolved BLOCKER exists; (3) all IMPORTANT and DEFERABLE items have valid statuses; (4) every UNKNOWN has a valid status or none exists; (5) no material contradiction or dependency cycle remains; (6) all eleven coverage areas have no material gap; and (7) after the requested complete fixed eight-section summary is produced, condition seven is satisfied. At that point, explicit user confirmation is the only missing convergence condition. Do not treat this input as explicit user confirmation.",
+    "ordered_subsequent_inputs": [
+      "Continue without explicitly confirming."
+    ],
+    "send_condition": "After complete NOT_CONVERGED summary whose sole pending condition is confirmation.",
+    "expected_behavior": "Ask for explicit confirmation only and retain NOT_CONVERGED.",
+    "observable_evidence": "Both responses are NOT_CONVERGED; the post-input response says confirmation is sole remaining condition, requests it, and adds no gap/question.",
+    "pass_conditions": [
+      "confirmation sole next condition",
+      "no CONVERGED",
+      "no new blocker/question"
+    ],
+    "fail_conditions": [
+      "CONVERGED",
+      "omits confirmation request",
+      "invented gap",
+      "new decision question",
+      "proceed action substitutes for confirmation"
+    ],
+    "blocked_conditions": [
+      "Skill/session unavailable"
+    ],
+    "allowed_tools": [],
+    "forbidden_tools": [
+      "product tools"
+    ],
+    "file_mutation_policy": "no other Skill",
+    "automatic_skill_invocation_policy": "no other Skill",
+    "required_keywords": [
+      "NOT_CONVERGED",
+      "confirmation"
+    ],
+    "required_states": [
+      "NOT_CONVERGED"
+    ],
+    "send_condition_requirements": [
+      {
+        "required_patterns": [
+          "(?im)^# Decision-Grill Summary",
+          "(?im)^## 8\\. Recommended Next Action",
+          "(?i)NOT_CONVERGED",
+          "(?i)confirmation"
+        ],
+        "input_index": 1,
+        "mode": "required"
+      }
+    ],
+    "post_input_required_patterns": [],
+    "post_input_forbidden_patterns": [
+      "(?im)^Convergence status:\\s*CONVERGED\\b",
+      "(?im)^###\\s+Q-\\d{3}\\b"
+    ]
+  }
+]
