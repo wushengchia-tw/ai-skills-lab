@@ -3,8 +3,10 @@ param(
     [ValidateSet('Discovery', 'ResumeProbe', 'Utf8Probe', 'DryRun', 'Core', 'Full', 'Targeted', 'StaticTest')]
     [string]$Mode = 'DryRun',
     [string]$CaseIds,
+    [string]$CaseInstanceIds,
     [string]$ActiveFolder,
     [string]$CodexPath,
+    [string]$AuthorizationManifestPath,
     [ValidateRange(1, 600)]
     [int]$CodexTimeoutSeconds = 120
 )
@@ -13,15 +15,15 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $RepoRoot = Split-Path -Parent $PSScriptRoot
-$ExpectedBranch = 'feature/grill-me-pro'
-$ExpectedHead = 'cd2427630d949465dbafd462cf26a6f22dae664c'
+$ExpectedBranch = $null
+$ExpectedHead = $null
 $GlobalSkills = Join-Path $env:USERPROFILE '.codex\skills'
 $OfficialSystemSkills = Join-Path $GlobalSkills '.system'
 $SourceSkill = Join-Path $RepoRoot 'skills\productivity\decision-grill\SKILL.md'
 $InstalledSkill = $null
 $SkillHashValidation = [pscustomobject]@{ source_skill_path=$SourceSkill; source_skill_sha256=$null; installed_skill_path=$null; installed_skill_sha256=$null; hashes_match=$false; installed_skill_exists=$false }
 $ProductSpecPath = Join-Path $RepoRoot 'specs\SPEC-001-decision-grill-v0.1.md'
-$ExpectedProductSpecSha256 = 'B1BA5BF746E317CD1431B6E0F3351D0D438CBD66C3A7D48738ED7F37DB90129E'
+$ExpectedProductSpecSha256 = '54712FCF84E395AB37490062CC3D2EF7ED64490BCF4D6F63D2EEA033C9971A74'
 $RemediationSpecPath = Join-Path $RepoRoot 'docs\productivity\decision-grill-remediation-spec.md'
 $ExpectedRemediationSpecSha256 = '2E8B0C0B1C3758831C6A4DEB2D7203838338280F181D0FBB44542A1330ED03F2'
 $CasesPath = Join-Path $RepoRoot 'tests\automation\decision-grill-cases.json'
@@ -43,18 +45,8 @@ $PreflightActiveFolderCanonical = $null
 $WorkingTreeIdentity = $null
 $CodexInvocationMock = $null
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-$AuthorizedDirtyWorkingTree = @(
-    [pscustomobject]@{ path='docs/productivity/decision-grill.md'; xy=' M' },
-    [pscustomobject]@{ path='skills/productivity/decision-grill/SKILL.md'; xy=' M' },
-    [pscustomobject]@{ path='specs/SPEC-001-decision-grill-v0.1.md'; xy=' M' },
-    [pscustomobject]@{ path='tests/manual/decision-grill-v0.1.md'; xy=' M' },
-    [pscustomobject]@{ path='docs/productivity/decision-grill-remediation-spec.md'; xy='??' },
-    [pscustomobject]@{ path='scripts/run-decision-grill-regression.ps1'; xy='??' },
-    [pscustomobject]@{ path='tests/automation/README.md'; xy='??' },
-    [pscustomobject]@{ path='tests/automation/decision-grill-cases.json'; xy='??' },
-    [pscustomobject]@{ path='tests/automation/decision-grill-judge-prompt.md'; xy='??' },
-    [pscustomobject]@{ path='tests/automation/decision-grill-result.schema.json'; xy='??' }
-)
+$AuthorizedDirtyWorkingTree = @()
+$AuthorizationManifest = $null
 
 function New-OutputLayout {
     foreach ($Path in @($OutputRoot, $RawDir, $TurnsDir, $ResultsDir)) { New-Item -ItemType Directory -Force -Path $Path | Out-Null }
@@ -91,6 +83,34 @@ function Get-Sha256([string]$LiteralPath) {
         if ($null -ne $Stream) { $Stream.Dispose() }
         if ($null -ne $Sha256) { $Sha256.Dispose() }
     }
+}
+
+function Initialize-AuthorizationManifest {
+    if ([string]::IsNullOrWhiteSpace($AuthorizationManifestPath)) { throw 'POAM path is required for production modes' }
+    $ManifestPath = [IO.Path]::GetFullPath($AuthorizationManifestPath)
+    if (-not (Test-Path -LiteralPath $ManifestPath -PathType Leaf)) { throw "POAM file does not exist: $ManifestPath" }
+    if (Test-PathIsWithinDirectoryOrdinalIgnoreCase $ManifestPath $RepoRoot) { throw 'POAM must remain outside the repository' }
+    $Manifest = (Read-Utf8NoBom $ManifestPath | ConvertFrom-Json -ErrorAction Stop)
+    foreach ($Property in @('authorization_id','approved_by','base_branch','base_head','authorized_changes','preexisting_user_artifacts')) {
+        if (-not (Test-ObjectProperty $Manifest $Property)) { throw "POAM missing required property: $Property" }
+    }
+    if ($Manifest.base_branch -ne 'feature/grill-me-pro') { throw "POAM base_branch is not authorized: $($Manifest.base_branch)" }
+    if ($Manifest.base_head -ne '0926c354bf3dfccc4072e40636901b029302f956') { throw "POAM base_head is not the Product Owner validation baseline: $($Manifest.base_head)" }
+    $Expected = [Collections.Generic.List[object]]::new()
+    foreach ($Entry in @($Manifest.authorized_changes)) {
+        $Path = ConvertTo-NormalizedRepositoryRelativePath $RepoRoot ([string]$Entry.path)
+        if ([string]$Entry.status -ne ' M') { throw "POAM authorized change has invalid status: $Path" }
+        $Expected.Add([pscustomobject]@{path=$Path;xy=' M';sha256=$null})
+    }
+    foreach ($Entry in @($Manifest.preexisting_user_artifacts)) {
+        $Path = ConvertTo-NormalizedRepositoryRelativePath $RepoRoot ([string]$Entry.path)
+        if ([string]$Entry.status -ne '??' -or [string]::IsNullOrWhiteSpace([string]$Entry.sha256)) { throw "POAM user artifact is invalid: $Path" }
+        $Expected.Add([pscustomobject]@{path=$Path;xy='??';sha256=([string]$Entry.sha256).ToUpperInvariant()})
+    }
+    $script:ExpectedBranch = [string]$Manifest.base_branch
+    $script:ExpectedHead = [string]$Manifest.base_head
+    $script:AuthorizedDirtyWorkingTree = @($Expected | Sort-Object path)
+    $script:AuthorizationManifest = [pscustomobject]@{ path=$ManifestPath; sha256=(Get-Sha256 $ManifestPath); value=$Manifest }
 }
 
 function Invoke-GitText([string]$Repository, [string[]]$Arguments) {
@@ -180,6 +200,7 @@ function Test-WorkingTreeBaseline([object]$Identity) {
             $Actual = $Entries[$Index]
             $Wanted = $Expected[$Index]
             if (-not [string]::Equals($Actual.path,$Wanted.path,[StringComparison]::OrdinalIgnoreCase) -or $Actual.xy -ne $Wanted.xy) { $Failures.Add("working-tree entry mismatch: expected $($Wanted.xy) $($Wanted.path); actual $($Actual.xy) $($Actual.path)") }
+            elseif ($Wanted.sha256 -and $Actual.sha256 -ne $Wanted.sha256) { $Failures.Add("working-tree SHA-256 mismatch: $($Actual.path)") }
         }
     }
     foreach ($Entry in $Entries) {
@@ -256,13 +277,43 @@ function Resolve-CaseSelection([object[]]$Catalog, [string]$Declaration, [switch
     return [pscustomobject]@{ passed=($Failures.Count -eq 0); declaration=$Declaration; requested_ids=@($Requested); selected_cases=@($Selected); selected_case_ids=@($Selected | ForEach-Object { $_.case_id }); failures=@($Failures) }
 }
 
-function Test-ModeCaseSelectionContract([string]$RequestedMode, [string]$Declaration, [object[]]$Catalog) {
-    if ($RequestedMode -in @('Core','Full') -and -not [string]::IsNullOrWhiteSpace($Declaration)) { return [pscustomobject]@{passed=$false;selection=$null;failures=@("CaseIds is not permitted for $RequestedMode mode")} }
+function Resolve-ParameterizedInstanceSelection([object[]]$Instances, [string]$Declaration, [switch]$Required) {
+    $Failures = [System.Collections.Generic.List[string]]::new()
+    $Requested = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    if ([string]::IsNullOrWhiteSpace($Declaration)) {
+        if ($Required) { $Failures.Add('CaseInstanceIds is required for parameterized Targeted mode') }
+    } else {
+        foreach ($RawToken in $Declaration.Split(',')) {
+            $Token = $RawToken.Trim()
+            if ([string]::IsNullOrWhiteSpace($Token)) { $Failures.Add('CaseInstanceIds contains a blank token'); continue }
+            if (-not $Requested.Add($Token)) { $Failures.Add("CaseInstanceIds contains a duplicate instance ID: $Token") }
+        }
+        foreach ($Token in @($Requested)) { if (@($Instances | Where-Object { (Get-OptionalString $_ 'case_instance_id') -ieq $Token }).Count -ne 1) { $Failures.Add("CaseInstanceIds contains an unknown instance ID: $Token") } }
+    }
+    $Selected = @($Instances | Where-Object { $Requested.Contains((Get-OptionalString $_ 'case_instance_id')) })
+    if ($Required -and $Selected.Count -eq 0 -and $Failures.Count -eq 0) { $Failures.Add('CaseInstanceIds must select at least one parameterized instance') }
+    return [pscustomobject]@{ passed=($Failures.Count -eq 0); declaration=$Declaration; requested_ids=@($Requested); selected_cases=@($Selected); selected_case_ids=@($Selected | ForEach-Object { Get-OptionalString $_ 'case_instance_id' }); failures=@($Failures) }
+}
+
+function Test-ModeCaseSelectionContract([string]$RequestedMode, [string]$Declaration, [object[]]$Catalog, [string]$InstanceDeclaration, [object[]]$Instances) {
+    if ($RequestedMode -in @('Core','Full') -and (-not [string]::IsNullOrWhiteSpace($Declaration) -or -not [string]::IsNullOrWhiteSpace($InstanceDeclaration))) { return [pscustomobject]@{passed=$false;selection=$null;failures=@("CaseIds and CaseInstanceIds are not permitted for $RequestedMode mode")} }
     if ($RequestedMode -eq 'Targeted') {
+        if (-not [string]::IsNullOrWhiteSpace($Declaration) -and -not [string]::IsNullOrWhiteSpace($InstanceDeclaration)) {
+            $BaseSelection = Resolve-CaseSelection $Catalog $Declaration -Required
+            $InstanceSelection = Resolve-ParameterizedInstanceSelection $Instances $InstanceDeclaration -Required
+            $Failures = @($BaseSelection.failures + $InstanceSelection.failures)
+            $Combined = @($BaseSelection.selected_cases + $InstanceSelection.selected_cases)
+            return [pscustomobject]@{passed=($Failures.Count -eq 0);selection=[pscustomobject]@{passed=($Failures.Count -eq 0);declaration=$Declaration;instance_declaration=$InstanceDeclaration;requested_ids=@($BaseSelection.requested_ids + $InstanceSelection.requested_ids);selected_cases=$Combined;selected_case_ids=@($Combined | ForEach-Object { Get-OptionalString $_ 'case_instance_id' (Get-OptionalString $_ 'case_id') });failures=$Failures};failures=$Failures}
+        }
+        if (-not [string]::IsNullOrWhiteSpace($InstanceDeclaration)) {
+            $Selection = Resolve-ParameterizedInstanceSelection $Instances $InstanceDeclaration -Required
+            return [pscustomobject]@{passed=$Selection.passed;selection=$Selection;failures=@($Selection.failures)}
+        }
         $Selection = Resolve-CaseSelection $Catalog $Declaration -Required
         return [pscustomobject]@{passed=$Selection.passed;selection=$Selection;failures=@($Selection.failures)}
     }
-    if ($RequestedMode -eq 'DryRun' -and -not [string]::IsNullOrWhiteSpace($Declaration)) {
+    if ($RequestedMode -eq 'DryRun' -and (-not [string]::IsNullOrWhiteSpace($Declaration) -or -not [string]::IsNullOrWhiteSpace($InstanceDeclaration))) {
+        if (-not [string]::IsNullOrWhiteSpace($InstanceDeclaration)) { return [pscustomobject]@{passed=$false;selection=$null;failures=@('CaseInstanceIds is only supported for Targeted mode')} }
         $Selection = Resolve-CaseSelection $Catalog $Declaration
         return [pscustomobject]@{passed=$Selection.passed;selection=$Selection;failures=@($Selection.failures)}
     }
@@ -368,7 +419,9 @@ function Test-CaseContract([object]$Case) {
             foreach ($Requirement in $Requirements) {
                 $Index = Get-OptionalObject $Requirement 'input_index'
                 $Mode = Get-OptionalString $Requirement 'mode'
-                if ($null -eq $Index -or $Index -isnot [int] -or $Index -lt 1 -or $Index -gt $Inputs.Count) { $Failures.Add("$CaseId subsequent input requirement has invalid input_index") } else { $Indices.Add([int]$Index) }
+                $ParsedIndex = $null
+                try { if ($null -ne $Index -and $Index -is [ValueType]) { $ParsedIndex = [int]$Index } } catch { $ParsedIndex = $null }
+                if ($null -eq $ParsedIndex -or $ParsedIndex -lt 1 -or $ParsedIndex -gt $Inputs.Count) { $Failures.Add("$CaseId subsequent input requirement has invalid input_index") } else { $Indices.Add($ParsedIndex) }
                 if ([string]::IsNullOrWhiteSpace($Mode)) { $Failures.Add("$CaseId subsequent input requirement missing mode") }
                 elseif (@('required','conditional') -notcontains $Mode) { $Failures.Add("$CaseId subsequent input requirement has unknown mode: $Mode") }
                 if (@(Get-OptionalArray $Requirement 'required_patterns').Count -eq 0 -and @(Get-OptionalArray $Requirement 'required_explicit_states').Count -eq 0) { $Failures.Add("$CaseId subsequent input requirement lacks declarative applicability evidence") }
@@ -398,6 +451,42 @@ function Test-CaseContract([object]$Case) {
         [void](Test-Deterministic $Case '' '' '')
     } catch { $Failures.Add("$CaseId deterministic prepare error: $($_.Exception.Message)") }
     return [pscustomobject]@{ case_id=$CaseId; passed=($Failures.Count -eq 0); failures=@($Failures) }
+}
+
+function Test-ParameterizedInstanceCatalog([object[]]$Instances, [object[]]$Cases) {
+    $Failures = [System.Collections.Generic.List[string]]::new()
+    $Required = @('case_instance_id','case_id','variant','initial_input','subsequent_inputs','send_conditions','expected_question_id','decision_item_id','accepted_answer','expected_ledger_event','answered_event_turn','revision_expectation','checkpoint_expectation','summary_expectation','confirmation_expectation','terminal_status')
+    $Seen = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($Instance in @($Instances)) {
+        foreach ($Name in $Required) { if (-not (Test-ObjectProperty $Instance $Name) -or [string]::IsNullOrWhiteSpace([string]$Instance.PSObject.Properties[$Name].Value)) { $Failures.Add("parameterized instance missing or blank $Name") } }
+        $Id = Get-OptionalString $Instance 'case_instance_id'
+        if (-not [string]::IsNullOrWhiteSpace($Id) -and -not $Seen.Add($Id)) { $Failures.Add("duplicate case_instance_id: $Id") }
+        if (@($Cases | Where-Object { $_.case_id -eq (Get-OptionalString $Instance 'case_id') }).Count -ne 1) { $Failures.Add("parameterized instance references missing base case: $Id") }
+        if (@(Get-OptionalArray $Instance 'subsequent_inputs').Count -eq 0 -or @(Get-OptionalArray $Instance 'send_conditions').Count -ne @(Get-OptionalArray $Instance 'subsequent_inputs').Count) { $Failures.Add("parameterized instance has incomplete subsequent input/send-condition declaration: $Id") }
+    }
+    [pscustomobject]@{ passed=($Failures.Count -eq 0); count=@($Instances).Count; failures=@($Failures) }
+}
+
+function Expand-ParameterizedInstances([object[]]$Cases, [object[]]$Instances) {
+    $Expanded = [System.Collections.Generic.List[object]]::new()
+    foreach ($Instance in @($Instances)) {
+        $Base = @($Cases | Where-Object { $_.case_id -eq $Instance.case_id }) | Select-Object -First 1
+        $Case = ($Base | ConvertTo-Json -Depth 30 | ConvertFrom-Json)
+        $Case | Add-Member -NotePropertyName case_instance_id -NotePropertyValue $Instance.case_instance_id -Force
+        $Case | Add-Member -NotePropertyName variant -NotePropertyValue $Instance.variant -Force
+        $Case.title = "$($Base.title) [$($Instance.variant)]"
+        $Case.cli_initial_input = $Instance.initial_input; $Case.desktop_initial_input = ($Instance.initial_input -replace '^\$decision-grill','/decision-grill')
+        $Case.ordered_subsequent_inputs = @($Instance.subsequent_inputs); $Case.send_condition = ($Instance.send_conditions -join ' ')
+        # Keep these as two independently evaluated requirements.  A PowerShell
+        # expression inside @() can otherwise concatenate the comma-separated
+        # values into one impossible cross-line regular expression.
+        $QuestionHeadingPattern = '(?im)^###\s+' + [regex]::Escape([string]$Instance.expected_question_id) + '\b'
+        $Case.send_condition_requirements = @([pscustomobject]@{input_index=1;mode='required';required_patterns=@($QuestionHeadingPattern, '(?im)^\*\*Recommended answer:\*\*');forbidden_patterns=@()})
+        $Case.checkpoint_fixture = [pscustomobject]@{primary_question_id=$Instance.expected_question_id;decision_item_id=$Instance.decision_item_id;accepted_answer=$Instance.accepted_answer;fixture_kind=$Instance.variant}
+        $Case.expected_behavior = "$($Instance.expected_ledger_event); checkpoint: $($Instance.checkpoint_expectation); terminal: $($Instance.terminal_status)"
+        $Expanded.Add($Case)
+    }
+    return @($Expanded)
 }
 
 function Get-TreeInventory([string]$Path) {
@@ -512,7 +601,8 @@ function Test-PreflightCheckShape([object]$Check) {
 }
 
 function Add-CheckCollection([System.Collections.Generic.List[object]]$Checks, [object[]]$AdditionalChecks, [string]$Context = 'preflight aggregation') {
-    foreach ($Check in @($AdditionalChecks)) {
+    if ($null -eq $AdditionalChecks -or $AdditionalChecks.Count -eq 0) { return }
+    foreach ($Check in $AdditionalChecks) {
         $ShapeFailure = Test-PreflightCheckShape $Check
         if ($null -ne $ShapeFailure) {
             $Type = if ($null -eq $Check) { '<null>' } else { $Check.GetType().FullName }
@@ -745,6 +835,9 @@ function Invoke-Preflight {
     $Checks = [System.Collections.Generic.List[object]]::new()
     $PushedLocation = $false
     try {
+        $CurrentCheck = 'Product Owner authorization manifest'
+        Initialize-AuthorizationManifest
+        Add-Check $Checks 'Product Owner authorization manifest' $true ("path={0}; sha256={1}" -f $AuthorizationManifest.path,$AuthorizationManifest.sha256)
         $CurrentCheck = 'ActiveFolder safety'
         $ActiveFolderSafety = Test-ActiveFolderSafety $ActiveFolder
         Add-Check $Checks 'ActiveFolder safety' $ActiveFolderSafety.passed (($ActiveFolderSafety.failures -join '; '))
@@ -873,8 +966,9 @@ function Get-TypedAcceptedEvents([object]$Extraction) {
         foreach ($Header in $Headers) {
             $NextBoundary = [regex]::Match($Text.Substring($Header.Index + $Header.Length), '(?im)^\s*(?:(?:\*{0,2})?Ledger\s+event\b|###\s+Q-\d{3}\b)')
             $End = if ($NextBoundary.Success) { $Header.Index + $Header.Length + $NextBoundary.Index } else { $Text.Length }
-            $BlankBoundary = [regex]::Match($Text.Substring($Header.Index + $Header.Length, $End - ($Header.Index + $Header.Length)), '(?:\r?\n){2,}')
-            if ($BlankBoundary.Success) { $End = $Header.Index + $Header.Length + $BlankBoundary.Index }
+            # A ledger event is normally formatted as a heading followed by blank-line-separated
+            # Markdown fields.  A blank line is presentation, not an event boundary; only the
+            # next ledger heading or question heading may end this message-local record.
             $Record = $Text.Substring($Header.Index, $End - $Header.Index).TrimEnd()
             # Accept both Markdown field spellings: **Label**: value and **Label:** value.
             # The field remains complete, labelled, and confined to this message-local record.
@@ -1351,9 +1445,12 @@ function Get-RunSummary([object[]]$CaseResults, [int]$Planned, [int]$ExecutedOve
     $Categories = @('PASS','FAIL','BLOCKED','RUNNER_INTERNAL_ERROR','NOT_EXECUTED')
     $Counts = [ordered]@{}
     foreach ($Category in $Categories) { $Counts[$Category] = @($CaseResults | Where-Object result -eq $Category).Count }
-    $Counted = ($Counts.Values | Measure-Object -Sum).Sum
-    $Executed = if ($ExecutedOverride -ge 0) { $ExecutedOverride } else { $Planned - $Counts.NOT_EXECUTED }
-    [pscustomobject]@{ categories=[pscustomobject]$Counts; executed=$Executed; planned=$Planned; total=$Planned; category_sum=$Counted; category_sum_matches_planned=($Counted -eq $Planned) }
+    # Suite-level preflight stops are recorded in preflight/run_stop, rather
+    # than fabricated as case results. Every terminal category is thus an
+    # actually executed case unit.
+    $TerminalCounted = $Counts.PASS + $Counts.FAIL + $Counts.BLOCKED + $Counts.RUNNER_INTERNAL_ERROR
+    $Executed = if ($ExecutedOverride -ge 0) { $ExecutedOverride } else { $TerminalCounted }
+    [pscustomobject]@{ categories=[pscustomobject]$Counts; executed=$Executed; planned=$Planned; total=$Planned; category_sum=$TerminalCounted; category_sum_matches_executed=($TerminalCounted -eq $Executed); category_sum_matches_planned=($TerminalCounted -eq $Planned); planned_equals_executed=($Planned -eq $Executed) }
 }
 
 function Get-RunExitCode([object[]]$CaseResults, [bool]$PreflightPassed) {
@@ -1419,7 +1516,7 @@ function Invoke-SelectedCases([object[]]$SelectedCases, [scriptblock]$CaseInvoke
 function Test-SendConditionSynthetic([object[]]$Cases) {
     $Targets = @(
         [pscustomobject]@{ case_id='DG-002'; input_index=1; false_transcript='Decision goal: optional SMS incident alerts. Please confirm this goal.'; true_transcript="### Q-001 — [IMPORTANT]`n**Question:** Should optional SMS incident alerts be enabled?`n**Recommended answer:** Enable SMS alerts.`nReply by accepting." },
-        [pscustomobject]@{ case_id='DG-004'; input_index=1; false_transcript='Please confirm the Aurora pilot rollout goal.'; true_transcript="### Q-001 — [IMPORTANT]`n**Question:** Which launch-announcement channel should be used?`n**Recommended answer:** Use the pilot mailing list." },
+        [pscustomobject]@{ case_id='DG-004'; input_index=1; false_transcript='The Aurora pilot announcement is important.'; true_transcript="### Q-001 — [IMPORTANT]`n**Question:** Which launch-announcement channel should be used?`n**Recommended answer:** Use the pilot mailing list."; chinese_true_transcript="### Q-001 — [IMPORTANT]`n**Question:** Aurora pilot 是否要使用啟動公告管道？`n**Recommended answer:** 使用團隊聊天頻道。"; wrong_turn_transcript="### Q-002 — [IMPORTANT]`n**Question:** Aurora pilot 是否要使用啟動公告管道？`n**Recommended answer:** 使用團隊聊天頻道。" },
         [pscustomobject]@{ case_id='DG-005'; input_index=1; false_transcript='Legal approval is required before launch.'; true_transcript='- **Legal approval status:** BLOCKED' },
         [pscustomobject]@{ case_id='DG-009'; input_index=1; false_transcript='The decisions are related.'; true_transcript="### Q-001 — [IMPORTANT]`n**Question:** Which compliance certification is required for the hosting vendor?`nReply by answering." }
     )
@@ -1430,7 +1527,9 @@ function Test-SendConditionSynthetic([object[]]$Cases) {
         $Requirement = Get-IndexedInputRequirement $Case $_.input_index
         $Mode = Get-OptionalString $Requirement 'mode'
         $ExpectedFalse = if ($Mode -eq 'conditional') { 'SKIP' } else { 'BLOCKED' }
-        [pscustomobject]@{ case_id=$_.case_id; input_index=$_.input_index; mode=$Mode; true_expected='SEND'; true_actual=$TrueResult.result; false_expected=$ExpectedFalse; false_actual=$FalseResult.result; true_passed=($TrueResult.result -eq 'SEND'); false_passed=($FalseResult.result -eq $ExpectedFalse); false_checks=@($FalseResult.evidence); true_checks=@($TrueResult.evidence) }
+        $ChineseResult = if ($null -ne $_.PSObject.Properties['chinese_true_transcript']) { Test-SendCondition $Case $_.chinese_true_transcript $_.input_index } else { $null }
+        $WrongTurnResult = if ($null -ne $_.PSObject.Properties['wrong_turn_transcript']) { Test-SendCondition $Case $_.wrong_turn_transcript $_.input_index } else { $null }
+        [pscustomobject]@{ case_id=$_.case_id; input_index=$_.input_index; mode=$Mode; true_expected='SEND'; true_actual=$TrueResult.result; false_expected=$ExpectedFalse; false_actual=$FalseResult.result; chinese_true_actual=if($null -ne $ChineseResult){$ChineseResult.result}else{$null};wrong_turn_actual=if($null -ne $WrongTurnResult){$WrongTurnResult.result}else{$null}; true_passed=($TrueResult.result -eq 'SEND'); false_passed=($FalseResult.result -eq $ExpectedFalse); chinese_true_passed=if($null -ne $ChineseResult){$ChineseResult.result -eq 'SEND'}else{$true};wrong_turn_passed=if($null -ne $WrongTurnResult){$WrongTurnResult.result -eq $ExpectedFalse}else{$true}; false_checks=@($FalseResult.evidence); true_checks=@($TrueResult.evidence) }
     })
 }
 
@@ -1513,10 +1612,11 @@ function Invoke-SemanticJudge([object]$JudgeContext) {
 
 function Invoke-JudgeWithEvidenceGate([object]$Case, [object]$Extraction, [object]$ObjectiveEvidence, [object]$DeterministicEvidence, [scriptblock]$JudgeInvoker, [switch]$SkipJudgeInputPersistence, [string]$JudgeInputOverride) {
     $CaseId = Get-OptionalString $Case 'case_id' '<unknown>'
+    $EvidenceId = Get-OptionalString $Case 'case_instance_id' $CaseId
     $Transcript = $Extraction.transcript
-    $JudgeInputPath = Join-Path $ResultsDir "$CaseId-judge-input.txt"
-    $JudgeRaw = Join-Path $RawDir "$CaseId-judge.jsonl"
-    $JudgeOut = Join-Path $ResultsDir "$CaseId-judge.json"
+    $JudgeInputPath = Join-Path $ResultsDir "$EvidenceId-judge-input.txt"
+    $JudgeRaw = Join-Path $RawDir "$EvidenceId-judge.jsonl"
+    $JudgeOut = Join-Path $ResultsDir "$EvidenceId-judge.json"
     $DeclaredFactWork = @(Get-OptionalArray $Case 'required_fact_work_assertions')
     $TypedEvidence = if ($null -eq $DeterministicEvidence) { @() } else { @(Get-OptionalArray $DeterministicEvidence 'fact_work_assertions') }
     $DeclaredFactWorkCount = @($DeclaredFactWork | ForEach-Object { $_ }).Length
@@ -1579,6 +1679,9 @@ function Invoke-JudgeWithEvidenceGate([object]$Case, [object]$Extraction, [objec
     try {
         if (-not [string]::IsNullOrWhiteSpace($script:PreflightActiveFolderCanonical)) { Assert-ActiveFolderSafetyRevalidation -Purpose "Judge pre-call: $CaseId" | Out-Null }
         $JudgeResult = & $JudgeInvoker $JudgeContext
+        if (@($JudgeResult).Count -eq 1 -and (Test-ObjectProperty $JudgeResult 'case_id') -and (Get-OptionalString $JudgeResult 'case_id') -ne $CaseId) {
+            return [pscustomobject]@{ case_id=$CaseId; result='BLOCKED'; confidence=0; satisfied_conditions=@(); violated_conditions=@('JUDGE_CASE_ID_MISMATCH'); evidence=@($JudgeRaw); review_required=$true; reason=('JUDGE_CASE_ID_MISMATCH: expected {0}; actual {1}' -f $CaseId,(Get-OptionalString $JudgeResult 'case_id')); judge_not_executed=$false; judge_input_transcript_length=$Integrity.judge_input_transcript_length; transcript_integrity=$Integrity }
+        }
         $JudgeResult | Add-Member -NotePropertyName judge_input_transcript_length -NotePropertyValue $Integrity.judge_input_transcript_length -Force
         $JudgeResult | Add-Member -NotePropertyName transcript_integrity -NotePropertyValue $Integrity -Force
         return $JudgeResult
@@ -1664,10 +1767,28 @@ function Test-UnicodeRoundTrip {
     } catch { return [pscustomobject]@{ result=$false; stdin_utf8=$false; stdout_utf8=$false; stderr_utf8=$false; error=$_.Exception.Message } }
 }
 
+function Complete-CaseResultMetadata([object]$Result, [string]$CaseId, [string]$CaseInstanceId, [string]$Variant, [object[]]$TurnJsonlPaths, [string]$TurnPath, [string]$ExtractionPath) {
+    if ($null -eq $Result) { return $null }
+    $Result | Add-Member -NotePropertyName case_id -NotePropertyValue $CaseId -Force
+    $Result | Add-Member -NotePropertyName case_instance_id -NotePropertyValue $CaseInstanceId -Force
+    $Result | Add-Member -NotePropertyName variant -NotePropertyValue $Variant -Force
+    $Result | Add-Member -NotePropertyName isolated_decision_grill_session -NotePropertyValue $true -Force
+    $Result | Add-Member -NotePropertyName isolated_judge_session -NotePropertyValue $true -Force
+    if ($null -eq $Result.judge) {
+        $Result | Add-Member -NotePropertyName judge -NotePropertyValue ([pscustomobject]@{result='NOT_EXECUTED';reason=(Get-OptionalString $Result 'reason' 'EARLY_TERMINAL_RESULT')}) -Force
+    }
+    $Result | Add-Member -NotePropertyName evidence_paths -NotePropertyValue ([pscustomobject]@{raw_turn_jsonl=@($TurnJsonlPaths);transcript=$TurnPath;transcript_extraction=$ExtractionPath}) -Force
+    return $Result
+}
+
 function Invoke-Case([object]$Case) {
     $CaseId = Get-OptionalString $Case 'case_id' '<unknown>'
+    $CaseInstanceId = Get-OptionalString $Case 'case_instance_id' $CaseId
+    $Variant = Get-OptionalString $Case 'variant' 'base'
+    $EvidenceId = $CaseInstanceId
     $Title = Get-OptionalString $Case 'title' '<unknown>'
     $FixturePaths = @()
+    $TurnJsonlPaths = [System.Collections.Generic.List[string]]::new()
     $BeforeDigest = $null; $AfterDigest = $null; $ThreadId = $null; $OfficialBefore = $null; $OfficialAfter = $null; $CaseResult = $null; $InventoryFailure = $null
     try {
         $FixturePaths = @(Initialize-CaseFixtures $Case)
@@ -1676,10 +1797,9 @@ function Invoke-Case([object]$Case) {
             $OfficialBefore = Get-OfficialSkillsInventory
             Write-Utf8NoBom (Join-Path $ResultsDir "$CaseId-official-skills-before.json") ($OfficialBefore | ConvertTo-Json -Depth 10)
         }
-        $TurnJsonlPaths = [System.Collections.Generic.List[string]]::new()
-        $RawPath = Join-Path $RawDir "$CaseId-turn-001-initial.jsonl"
-        $TurnPath = Join-Path $TurnsDir "$CaseId.md"
-        $ExtractionPath = Join-Path $ResultsDir "$CaseId-transcript-extraction.json"
+        $RawPath = Join-Path $RawDir "$EvidenceId-turn-001-initial.jsonl"
+        $TurnPath = Join-Path $TurnsDir "$EvidenceId.md"
+        $ExtractionPath = Join-Path $ResultsDir "$EvidenceId-transcript-extraction.json"
         $InitialPrompt = Get-OptionalString $Case 'cli_initial_input'
         $CaseArguments = New-CodexExecutionArguments -Sandbox 'workspace-write' -Tail @('-')
         Invoke-CodexJson -CodexArguments $CaseArguments -Prompt $InitialPrompt -RawPath $RawPath -InvocationName "case $CaseId initial input"
@@ -1701,7 +1821,7 @@ function Invoke-Case([object]$Case) {
             }
             if ($SendConditionResult.result -eq 'SKIP') { $TurnNumber++; continue }
             $TurnNumber++
-            $RawPath = Join-Path $RawDir ("{0}-turn-{1:D3}-resume.jsonl" -f $CaseId, $TurnNumber)
+            $RawPath = Join-Path $RawDir ("{0}-turn-{1:D3}-resume.jsonl" -f $EvidenceId, $TurnNumber)
             $ResumeArguments = New-CodexResumeArguments -ThreadId $ThreadId
             $ResumePrompt = [string]$SubsequentPrompt
             $ResumeInvoker = New-ProductionResumeInvoker
@@ -1711,14 +1831,14 @@ function Invoke-Case([object]$Case) {
             $PostInputResult = Test-PostInputOrderedAssertions $Case $ResumeOnlyExtraction
             foreach ($Failure in @($PostInputResult.failures)) { $PostInputFailures.Add("input ${TurnNumber}: $Failure") }
         }
-        if ($null -ne $CaseResult) { return $CaseResult }
+        if ($null -ne $CaseResult) { return (Complete-CaseResultMetadata $CaseResult $CaseId $CaseInstanceId $Variant @($TurnJsonlPaths) $TurnPath $ExtractionPath) }
         $Extraction = Get-CaseTranscript @($TurnJsonlPaths)
         $Extraction | Select-Object jsonl_files_inspected,agent_message_count,extracted_message_order,final_message_length,transcript_length,transcript_sha256,final_message_sha256 | ConvertTo-Json -Depth 12 | ForEach-Object { Write-Utf8NoBom $ExtractionPath $_ }
         $TranscriptGate = Test-TranscriptComplete $Extraction
         if (-not $TranscriptGate.passed) {
             $AfterDigest = Get-RevalidatedInventoryDigest 'after digest'
             $CaseResult = [pscustomobject]@{ case_id=$CaseId; title=$Title; active_folder=$ActiveFolder; fixture_paths=@($FixturePaths); result='BLOCKED'; reason='INCOMPLETE_TRANSCRIPT'; deterministic=@{result='BLOCKED';failures=@('INCOMPLETE_TRANSCRIPT')}; judge=$null; thread_id=$ThreadId; evidence_excerpt='Transcript completeness gate blocked Judge execution.'; transcript_extraction=$Extraction; judge_input_transcript_length=0; before_hash=$BeforeDigest; after_hash=$AfterDigest; review_required=$true }
-            return $CaseResult
+            return (Complete-CaseResultMetadata $CaseResult $CaseId $CaseInstanceId $Variant @($TurnJsonlPaths) $TurnPath $ExtractionPath)
         }
         $Transcript = $Extraction.transcript
         Write-Utf8NoBom $TurnPath $Transcript
@@ -1734,7 +1854,7 @@ function Invoke-Case([object]$Case) {
         $ObjectiveEvidenceGate = Test-ObjectiveEvidenceRequirements $Case $ObjectiveEvidence
         if (-not $ObjectiveEvidenceGate.passed) {
             $CaseResult = [pscustomobject]@{ case_id=$CaseId; title=$Title; active_folder=$ActiveFolder; fixture_paths=@($FixturePaths); result='BLOCKED'; reason='OBJECTIVE_EVIDENCE_REQUIREMENTS_NOT_MET'; deterministic=@{result='BLOCKED';failures=@($ObjectiveEvidenceGate.missing)}; judge=$null; thread_id=$ThreadId; evidence_excerpt=('Missing required objective evidence: ' + ($ObjectiveEvidenceGate.missing -join ', ')); transcript_extraction=$Extraction; send_condition_evidence=@($SendConditionEvidence); judge_input_transcript_length=0; before_hash=$BeforeDigest; after_hash=$AfterDigest; objective_evidence=$ObjectiveEvidence; objective_evidence_requirements=$ObjectiveEvidenceGate; missing_objective_evidence=@($ObjectiveEvidenceGate.missing); review_required=$true }
-            return $CaseResult
+            return (Complete-CaseResultMetadata $CaseResult $CaseId $CaseInstanceId $Variant @($TurnJsonlPaths) $TurnPath $ExtractionPath)
         }
         $Acceptance = Invoke-AcceptanceDecision $Case $Extraction $ObjectiveEvidence $Deterministic $null
         $Judge = $Acceptance.judge
@@ -1742,7 +1862,7 @@ function Invoke-Case([object]$Case) {
         $Final = $Merge.result
         $JudgeReviewRequired = Get-OptionalBoolean $Judge 'review_required'
         $ResultReason = if ($Judge.result -eq 'BLOCKED' -and (Get-OptionalString $Judge 'reason') -eq 'TRANSCRIPT_ENCODING_ERROR') { 'TRANSCRIPT_ENCODING_ERROR' } else { $Merge.reason }
-        $CaseResult = [pscustomobject]@{ case_id=$CaseId; title=$Title; active_folder=$ActiveFolder; fixture_paths=@($FixturePaths); result=$Final; reason=$ResultReason; merge=$Merge; deterministic=$Deterministic; typed_evidence=$Deterministic.typed_event_evidence; judge=$Judge; thread_id=$ThreadId; evidence_excerpt=$Transcript.Substring(0, [Math]::Min(1000, $Transcript.Length)); transcript_extraction=$Extraction; send_condition_evidence=@($SendConditionEvidence); judge_input_transcript_length=$Judge.judge_input_transcript_length; before_hash=$BeforeDigest; after_hash=$AfterDigest; review_required=($Final -eq 'BLOCKED' -or ($JudgeReviewRequired.exists -and $JudgeReviewRequired.value)) }
+        $CaseResult = [pscustomobject]@{ case_id=$CaseId; case_instance_id=$CaseInstanceId; variant=$Variant; isolated_decision_grill_session=$true; isolated_judge_session=$true; title=$Title; active_folder=$ActiveFolder; fixture_paths=@($FixturePaths); result=$Final; reason=$ResultReason; merge=$Merge; deterministic=$Deterministic; typed_evidence=$Deterministic.typed_event_evidence; judge=$Judge; thread_id=$ThreadId; evidence_excerpt=$Transcript.Substring(0, [Math]::Min(1000, $Transcript.Length)); transcript_extraction=$Extraction; send_condition_evidence=@($SendConditionEvidence); judge_input_transcript_length=$Judge.judge_input_transcript_length; before_hash=$BeforeDigest; after_hash=$AfterDigest; review_required=($Final -eq 'BLOCKED' -or ($JudgeReviewRequired.exists -and $JudgeReviewRequired.value)) }
     } catch {
         $script:RunnerInternalError = $true
         try { $AfterDigest = if (Test-Path -LiteralPath $ActiveFolder) { Get-RevalidatedInventoryDigest 'after digest during error handling' } else { $null } } catch { $AfterDigest = $null }
@@ -1774,13 +1894,28 @@ function Invoke-Case([object]$Case) {
             }
         }
     }
-    return $CaseResult
+    return (Complete-CaseResultMetadata $CaseResult $CaseId $CaseInstanceId $Variant @($TurnJsonlPaths) $TurnPath $ExtractionPath)
 }
 
 function Invoke-StaticTest {
-    $Cases = Read-Utf8NoBom $CasesPath | ConvertFrom-Json
+    $Catalog = Read-Utf8NoBom $CasesPath | ConvertFrom-Json
+    $Cases = @($Catalog.cases)
+    $ParameterizedInstances = @($Catalog.parameterized_instances)
     $Results = [System.Collections.Generic.List[object]]::new()
     function Add-Static([string]$Name, [bool]$Passed, [string]$Detail) { $Results.Add([pscustomobject]@{name=$Name;passed=$Passed;detail=$Detail}) }
+    $JudgeSchema = Read-Utf8NoBom $SchemaPath | ConvertFrom-Json
+    $JudgeCaseIdPattern = [string]$JudgeSchema.properties.case_id.pattern
+    $JudgeCaseIdRegex = $null
+    try { $JudgeCaseIdRegex = [regex]::new($JudgeCaseIdPattern) } catch { }
+    $SchemaPositiveIds = @('DG-001','DG-020','DG-021','DG-022','DG-029','DG-037')
+    $SchemaNegativeIds = @('DG-21','DG-1000','DG-ABC','021','')
+    $SchemaPositivesPass = $null -ne $JudgeCaseIdRegex -and @($SchemaPositiveIds | Where-Object { -not $JudgeCaseIdRegex.IsMatch($_) }).Count -eq 0
+    $SchemaNegativesReject = $null -ne $JudgeCaseIdRegex -and @($SchemaNegativeIds | Where-Object { $JudgeCaseIdRegex.IsMatch($_) }).Count -eq 0
+    $HighestCatalogCaseId = @($Cases | Sort-Object { [int](($_.case_id -replace '^DG-','')) } -Descending | Select-Object -First 1).case_id
+    $CatalogMaximumAccepted = $null -ne $JudgeCaseIdRegex -and $JudgeCaseIdRegex.IsMatch($HighestCatalogCaseId)
+    Add-Static 'judge schema accepts current and post-DG-020 canonical IDs' $SchemaPositivesPass ("pattern={0}; ids={1}" -f $JudgeCaseIdPattern,($SchemaPositiveIds -join ','))
+    Add-Static 'judge schema rejects malformed case IDs' $SchemaNegativesReject ("pattern={0}; ids={1}" -f $JudgeCaseIdPattern,($SchemaNegativeIds -join ','))
+    Add-Static 'judge schema accepts highest catalog case ID' $CatalogMaximumAccepted ("pattern={0}; highest_catalog_case_id={1}" -f $JudgeCaseIdPattern,$HighestCatalogCaseId)
     function Add-StaticSelection([string]$Name, [string]$Declaration, [bool]$Required, [bool]$ExpectedPassed, [string]$ExpectedIds = '') {
         $Selection = Resolve-CaseSelection $Cases $Declaration -Required:$Required
         $ActualIds = $Selection.selected_case_ids -join ','
@@ -1803,6 +1938,8 @@ function Invoke-StaticTest {
     $DryRunWithoutIds = Test-ModeCaseSelectionContract 'DryRun' $null $Cases
     Add-Static 'Targeted missing CaseIds rejected' (-not $TargetedMissing.passed) ($TargetedMissing.failures -join '; ')
     Add-Static 'Core and Full CaseIds rejected' (-not $CoreWithIds.passed -and -not $FullWithIds.passed) (($CoreWithIds.failures + $FullWithIds.failures) -join '; ')
+    $TargetedMixed = Test-ModeCaseSelectionContract 'Targeted' 'DG-003,DG-004' $Cases 'DG-029-financial-commitment,DG-032-external-document-negative' @(Expand-ParameterizedInstances $Cases $ParameterizedInstances)
+    Add-Static 'Targeted mixed base and parameterized selection preserves one run set' ($TargetedMixed.passed -and $TargetedMixed.selection.selected_cases.Count -eq 4 -and ($TargetedMixed.selection.selected_case_ids -join ',') -eq 'DG-003,DG-004,DG-029-financial-commitment,DG-032-external-document-negative') 'base and parameterized selections combine without case-specific execution logic'
     Add-Static 'DryRun CaseIds optional selection' ($DryRunWithIds.passed -and ($DryRunWithIds.selection.selected_case_ids -join ',') -eq 'DG-001,DG-003' -and $DryRunWithoutIds.passed -and $DryRunWithoutIds.selection.selected_case_ids.Count -eq 0) 'valid selection accepted; omitted selection preserves DryRun'
     $StaticSelection = Resolve-CaseSelection $Cases 'DG-009,DG-001,DG-005' -Required
     $StaticSelectionCalls = [System.Collections.Generic.List[string]]::new()
@@ -1812,7 +1949,7 @@ function Invoke-StaticTest {
     $StaticFailCalls = [System.Collections.Generic.List[string]]::new()
     $StaticFailRun = Invoke-SelectedCases $StaticFailSelection.selected_cases { param($Case) $StaticFailCalls.Add($Case.case_id); if ($Case.case_id -eq 'DG-001') { [pscustomobject]@{case_id=$Case.case_id;result='RUNNER_INTERNAL_ERROR';reason='RUNNER_INTERNAL_ERROR';runtime_error=@{script_line=1}} } else { [pscustomobject]@{case_id=$Case.case_id;result='PASS';reason=$null} } }
     $StaticFailSummary = Get-RunSummary @($StaticFailRun.results) $StaticFailSelection.selected_cases.Count
-    Add-Static 'selection fail-fast only marks selected remainder NOT_EXECUTED' (($StaticFailCalls -join ',') -eq 'DG-001' -and @($StaticFailRun.results | Where-Object result -eq 'NOT_EXECUTED').Count -eq 2 -and @($StaticFailRun.results).Count -eq 3 -and $StaticFailSummary.executed -eq 1 -and $StaticFailSummary.category_sum_matches_planned) 'selected-only fail-fast and aggregate totals'
+    Add-Static 'selection fail-fast only marks selected remainder NOT_EXECUTED' (($StaticFailCalls -join ',') -eq 'DG-001' -and @($StaticFailRun.results | Where-Object result -eq 'NOT_EXECUTED').Count -eq 2 -and @($StaticFailRun.results).Count -eq 3 -and $StaticFailSummary.executed -eq 1 -and $StaticFailSummary.category_sum_matches_executed -and -not $StaticFailSummary.category_sum_matches_planned) 'selected-only fail-fast and aggregate totals'
     $ResultContractCase = @($Cases | Where-Object case_id -eq 'DG-001')[0]
     foreach ($Scenario in @(
         [pscustomobject]@{name='valid PASS result';output=@([pscustomobject]@{case_id='DG-001';result='PASS'});pass=$true},
@@ -1836,7 +1973,7 @@ function Invoke-StaticTest {
     $ContractRunCases = @($Cases | Where-Object case_id -in @('DG-001','DG-003','DG-005'))
     $ContractRun = Invoke-SelectedCases $ContractRunCases { param($Case) $ContractCalls.Add($Case.case_id); if ($Case.case_id -eq 'DG-001') { return }; [pscustomobject]@{case_id=$Case.case_id;result='PASS'} }
     $ContractSummary = Get-RunSummary @($ContractRun.results) $ContractRunCases.Count
-    Add-Static 'result contract malformed trigger persists selected remainder and evidence' (($ContractCalls -join ',') -eq 'DG-001' -and $ContractRun.results[0].result -eq 'RUNNER_INTERNAL_ERROR' -and @($ContractRun.results | Where-Object result -eq 'NOT_EXECUTED').Count -eq 2 -and $ContractSummary.category_sum_matches_planned -and $ContractRun.results[0].original_result_evidence.output_count -eq 0) 'generic malformed trigger, evidence, and selected-only fail-fast'
+    Add-Static 'result contract malformed trigger persists selected remainder and evidence' (($ContractCalls -join ',') -eq 'DG-001' -and $ContractRun.results[0].result -eq 'RUNNER_INTERNAL_ERROR' -and @($ContractRun.results | Where-Object result -eq 'NOT_EXECUTED').Count -eq 2 -and $ContractSummary.category_sum_matches_executed -and -not $ContractSummary.category_sum_matches_planned -and $ContractRun.results[0].original_result_evidence.output_count -eq 0) 'generic malformed trigger, evidence, and selected-only fail-fast'
     $ContractPersistenceRoot = Join-Path 'D:\temp' ('decision-grill-static-result-contract-' + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $ContractPersistenceRoot -Force | Out-Null
     try {
@@ -1906,7 +2043,7 @@ function Invoke-StaticTest {
     $RunnerFailRun = Invoke-SelectedCases -SelectedCases $SyntheticCases -CaseInvoker $RunnerCaseInvoker
     Add-Static 'runner error stops selected cases and persists NOT_EXECUTED' ($script:StaticSelectedCalls.Count -eq 1 -and @($RunnerFailRun.results | Where-Object result -eq 'NOT_EXECUTED').Count -eq 2 -and @($RunnerFailRun.results | Where-Object result -eq 'NOT_EXECUTED' | Where-Object { $_.deterministic.result -eq 'NOT_RUN' -and $_.judge -eq 'NOT_RUN' -and $_.thread_id -eq $null -and $_.resume_call_count -eq 0 }).Count -eq 2) 'no later case invoker, thread, resume, or Judge'
     $RunnerSummary = Get-RunSummary @($RunnerFailRun.results) 3
-    Add-Static 'runner summary counts planned and executed' ($RunnerSummary.categories.RUNNER_INTERNAL_ERROR -eq 1 -and $RunnerSummary.categories.NOT_EXECUTED -eq 2 -and $RunnerSummary.executed -eq 1 -and $RunnerSummary.category_sum_matches_planned) 'summary is aggregate-derived'
+    Add-Static 'runner summary counts planned and executed' ($RunnerSummary.categories.RUNNER_INTERNAL_ERROR -eq 1 -and $RunnerSummary.categories.NOT_EXECUTED -eq 2 -and $RunnerSummary.executed -eq 1 -and $RunnerSummary.category_sum_matches_executed -and -not $RunnerSummary.category_sum_matches_planned) 'summary is aggregate-derived'
     $DryRunSelectionSummary = Get-RunSummary @() 6 0
     Add-Static 'DryRun selected cases report zero product executions' ($DryRunSelectionSummary.planned -eq 6 -and $DryRunSelectionSummary.executed -eq 0 -and $DryRunSelectionSummary.categories.PASS -eq 0) 'selection is validated without product-case execution'
     Add-Static 'runner exit precedence' ((Get-RunExitCode @($RunnerFailRun.results) $true) -eq 3) 'runner error wins over product categories'
@@ -1960,7 +2097,7 @@ function Invoke-StaticTest {
         [pscustomobject]@{name='DG001_WRONG_QID_REJECTED';text=('**Ledger event — Q-002:** `ANSWERED`' + [Environment]::NewLine + 'Decision result: Other decision.' + [Environment]::NewLine + 'Resulting status: `ANSWERED`' + [Environment]::NewLine + '### Q-002 — [BLOCKER]');pass=$false},
         [pscustomobject]@{name='DG001_PREINPUT_LEDGER_REJECTED';text=('**Ledger event — Q-001:** `ANSWERED`' + [Environment]::NewLine + 'Decision result: Launch.' + [Environment]::NewLine + 'Resulting status: `ANSWERED`' + [Environment]::NewLine + '### Q-001 — [BLOCKER]' + [Environment]::NewLine + '**Recommended answer:** Launch.');pass=$false},
         [pscustomobject]@{name='DG001_FUTURE_PROMISE_REJECTED';text='After you answer, I will record a Q-001 accepted ledger event with Resulting status: ANSWERED.';pass=$false},
-        [pscustomobject]@{name='DG001_CROSS_SEGMENT_REJECTED';text=('**Ledger event — Q-001:** `ANSWERED`' + [Environment]::NewLine + [Environment]::NewLine + 'Decision result: Launch.' + [Environment]::NewLine + [Environment]::NewLine + 'Resulting status: `ANSWERED`');pass=$false}
+        [pscustomobject]@{name='DG001_BLANK_SEPARATED_FORMAL_EVENT_ACCEPTED';text=('**Ledger event — Q-001:** `ANSWERED`' + [Environment]::NewLine + [Environment]::NewLine + 'Decision result: Launch.' + [Environment]::NewLine + [Environment]::NewLine + 'Resulting status: `ANSWERED`');pass=$true}
     )) { $Actual=(Test-PostInputOrderedAssertions $DG001 $Scenario.text).result -eq 'PASS'; Add-Static $Scenario.name ($Actual -eq $Scenario.pass) "actual=$Actual" }
     $DG001Attempt7Replay = ('**Ledger event — Q-001**' + [Environment]::NewLine + 'Lifecycle: `ANSWERED`' + [Environment]::NewLine + 'Decision result: Launch requires joint approval.' + [Environment]::NewLine + 'Resulting status: `ANSWERED`' + [Environment]::NewLine + [Environment]::NewLine + '### Q-002 — [BLOCKER]')
     $DG001Attempt7Extraction = New-MessageBoundaryExtraction $DG001Attempt7Replay
@@ -2122,7 +2259,7 @@ function Invoke-StaticTest {
         return [pscustomobject]@{ passed=($Missing.Count -eq 0 -and $Duplicate.Count -eq 0 -and $Failed.Count -eq 0 -and @($ObservedResults | Where-Object { $_.name -in $RequiredNames }).Count -eq $RequiredNames.Count); missing=@($Missing); duplicate=@($Duplicate); failed=@($Failed); observed=@($ObservedResults | Where-Object { $_.name -in $RequiredNames }).Count; required=$RequiredNames.Count }
     }
     $FourCaseProductionGateNames = @(
-        'DG-001 Q-002 before accepted','DG001_FINAL_FULL_BOLD_COLON_REPLAY','DG001_ATTEMPT7_TRAILING_BLANK_REPLAY','DG001_NO_CROSS_MESSAGE_OR_RECORD_ASSEMBLY','DG001_MISSING_LEDGER_REJECTED','DG001_WRONG_QID_REJECTED','DG001_CROSS_SEGMENT_REJECTED','DG001_INCIDENTAL_ANSWERED_REJECTED','DG001_NEGATED_ANSWERED_REJECTED',
+        'DG-001 Q-002 before accepted','DG001_FINAL_FULL_BOLD_COLON_REPLAY','DG001_ATTEMPT7_TRAILING_BLANK_REPLAY','DG001_NO_CROSS_MESSAGE_OR_RECORD_ASSEMBLY','DG001_MISSING_LEDGER_REJECTED','DG001_WRONG_QID_REJECTED','DG001_BLANK_SEPARATED_FORMAL_EVENT_ACCEPTED','DG001_INCIDENTAL_ANSWERED_REJECTED','DG001_NEGATED_ANSWERED_REJECTED',
         'DG008_FORMAL_LIFECYCLE_ASSOCIATION_POSITIVE','DG008_GENERIC_HISTORICAL_SURFACE_POSITIVE','DG008_WRONG_DECISION_JUDGE_FAIL','DG008_INCIDENTAL_SUPERSEDED_DETERMINISTIC_REJECTED','DG008_HISTORICAL_LIFECYCLE_NEGATION_DETERMINISTIC_REJECTED','DG008_FENCED_SUPERSEDED_DETERMINISTIC_REJECTED','DG008_MISSING_FORMAL_LIFECYCLE_LABEL_REJECTED',
         'DG012_SEND_STANDARD_ONCE','DG012_SEND_EXACT_CATALOG_PROMPT','DG012_SEND_INLINE_CODE_ONCE','DG012_SEND_BOLD_LEDGER_ONCE','DG012_MISSING_BLOCKED_ADAPTER_ZERO','DG012_MISSING_Q_HEADING_ADAPTER_ZERO','DG012_EMPTY_TRANSCRIPT_ADAPTER_ZERO','DG012_MALFORMED_Q_HEADING_ADAPTER_ZERO','DG012_INCIDENTAL_BLOCKED_ADAPTER_ZERO','DG012_NEGATED_BLOCKED_ADAPTER_ZERO','DG012_FENCED_BLOCKED_ADAPTER_ZERO','DG012_REQUIRED_NEVER_SKIP',
         'DG020_JUDGE_PASS_ADAPTER_ONCE','DG020_JUDGE_INPUT_EVIDENCE','DG020_JUDGE_FAIL_ADAPTER_ONCE','DG020_JUDGE_MIXED_SURFACE_PASS','DG020_PREMATURE_CONVERGED_SKIPS_JUDGE','DG020_INCIDENTAL_CONVERGED_NOT_FORMAL','DG020_NEGATED_CONVERGED_NOT_FORMAL','DG020_FENCED_CONVERGED_NOT_FORMAL','DG020_MISSING_TRANSCRIPT_BLOCKS_ADAPTER_ZERO','DG020_MISSING_JUDGE_INPUT_BLOCKS_ADAPTER_ZERO','DG020_MALFORMED_JUDGE_RESPONSE_NOT_PASS','DG020_JUDGE_EXCEPTION_BLOCKED'
@@ -2134,11 +2271,43 @@ function Invoke-StaticTest {
     $FourCaseFalseProbe = @($FourCaseProductionGateResults | ForEach-Object { [pscustomobject]@{ name=$_.name; passed=$(if ($_.name -eq $FourCaseProductionGateNames[1]) { $false } else { $_.passed }) } })
     $FourCaseFalseAggregate = Test-StaticFourCaseMatrixAggregate $FourCaseProductionGateNames $FourCaseFalseProbe
     Add-Static 'FOUR_CASE_MATRIX_COMPLETENESS_UNIQUENESS_FAILURE_SENSITIVITY' (-not $FourCaseMissingProbe.passed -and $FourCaseMissingProbe.missing -contains $FourCaseProductionGateNames[0] -and -not $FourCaseFalseAggregate.passed -and $FourCaseFalseAggregate.failed -contains $FourCaseProductionGateNames[1]) 'aggregate rejects a missing required assertion and a false required assertion from the same result collection'
-    $ExpectedCatalogIds = @(1..20 | ForEach-Object { 'DG-{0:D3}' -f $_ })
+    $ExpectedCatalogIds = @(1..39 | ForEach-Object { 'DG-{0:D3}' -f $_ })
     $ActualCatalogIds = @($Cases | ForEach-Object { $_.case_id })
     $CatalogContracts = @($Cases | ForEach-Object { Test-CaseContract $_ })
+    $ParameterizedContract = Test-ParameterizedInstanceCatalog $ParameterizedInstances $Cases
+    $StaticExpandedInstances = @(Expand-ParameterizedInstances $Cases $ParameterizedInstances)
+    $StaticInstanceSelection = Resolve-ParameterizedInstanceSelection $StaticExpandedInstances ($ParameterizedInstances.case_instance_id -join ',') -Required
+    $StaticInstanceModeSelection = Test-ModeCaseSelectionContract -RequestedMode 'Targeted' -Declaration $null -Catalog $Cases -InstanceDeclaration ($ParameterizedInstances.case_instance_id -join ',') -Instances $StaticExpandedInstances
     $CatalogContractsPass = @($CatalogContracts | Where-Object { -not $_.passed }).Count -eq 0
-    Add-Static '20_CASE_CATALOG_CONTRACT_GATE' ($ActualCatalogIds.Count -eq 20 -and ($ActualCatalogIds -join ',') -eq ($ExpectedCatalogIds -join ',') -and $CatalogContractsPass) 'exact DG-001 through DG-020 catalog order and production Test-CaseContract validation; this is not a Full replay'
+    Add-Static '39_CASE_CATALOG_CONTRACT_GATE' ($ActualCatalogIds.Count -eq 39 -and ($ActualCatalogIds -join ',') -eq ($ExpectedCatalogIds -join ',') -and $CatalogContractsPass) ('exact DG-001 through DG-039 catalog order and production Test-CaseContract validation; failed={0}' -f (($CatalogContracts | Where-Object { -not $_.passed } | ForEach-Object { "$($_.case_id): $($_.failures -join ', ')" }) -join ' | '))
+    Add-Static 'PARAMETERIZED_INSTANCE_CATALOG_GATE' ($ParameterizedContract.passed -and $ParameterizedContract.count -eq 10) ('instances={0}; failures={1}' -f $ParameterizedContract.count,($ParameterizedContract.failures -join '|'))
+    Add-Static 'PARAMETERIZED_INSTANCE_TARGET_SELECTION_GATE' ($StaticInstanceSelection.passed -and $StaticInstanceSelection.selected_cases.Count -eq 10) ('selected={0}; failures={1}' -f $StaticInstanceSelection.selected_cases.Count,($StaticInstanceSelection.failures -join '|'))
+    Add-Static 'PARAMETERIZED_INSTANCE_TARGET_MODE_SELECTION_GATE' ($StaticInstanceModeSelection.passed -and $StaticInstanceModeSelection.selection.selected_cases.Count -eq 10) ('selected={0}; failures={1}' -f $StaticInstanceModeSelection.selection.selected_cases.Count,($StaticInstanceModeSelection.failures -join '|'))
+    $CheckpointFixtureCases = @($Cases | Where-Object { $null -ne (Get-OptionalObject $_ 'checkpoint_fixture') })
+    $CheckpointFixturePrimaryPass = @($CheckpointFixtureCases | Where-Object {
+        $Prompt = (Get-OptionalString $_ 'cli_initial_input')
+        $Inputs = @(Get-OptionalArray $_ 'ordered_subsequent_inputs')
+        $Requirements = @(Get-OptionalArray $_ 'send_condition_requirements')
+        $SecondMatches = @($Requirements | Where-Object { (Get-OptionalObject $_ 'input_index') -eq 2 })
+        $Second = if ($SecondMatches.Count -gt 0) { $SecondMatches[0] } else { $null }
+        if ((Get-OptionalString $_ 'case_id') -eq 'DG-022') { return ($Prompt -match 'decide the declared checkpoint behavior' -or $Prompt -notmatch 'new interval' -or $Inputs.Count -ne 1 -or $null -ne $Second) }
+        $PrimaryIsMaterial = $Prompt -match 'decide whether' -and $Prompt -notmatch '(?i)decide\s+(?:the\s+declared\s+)?checkpoint behavior|checkpoint-preparation decision'
+        if ($Inputs.Count -eq 1) { return (-not $PrimaryIsMaterial) }
+        return (-not $PrimaryIsMaterial -or $Inputs.Count -ne 2 -or $null -eq $Second -or (@(Get-OptionalArray $Second 'required_patterns') -join "`n") -notmatch 'Checkpoint control')
+    }).Count -eq 0
+    Add-Static 'checkpoint fixtures use material primary decision then separate non-primary control when triggered' ($CheckpointFixtureCases.Count -eq 19 -and $CheckpointFixturePrimaryPass) 'all checkpoint fixtures forbid checkpoint behavior or preparation as a primary question; two-input fixtures require a separate control choice'
+    $StaticDG022 = @($Cases | Where-Object { $_.case_id -eq 'DG-022' })[0]
+    Add-Static 'DG-022 has one checkpoint resume baseline' ((Get-OptionalString $StaticDG022 'cli_initial_input') -match 'four already effective ANSWERED baseline decisions' -and (Get-OptionalString $StaticDG022 'cli_initial_input') -match 'four restored answers plus QCP022 as the sole resume baseline' -and (Get-OptionalString $StaticDG022 'cli_initial_input') -match 'new interval') 'four effective answers plus QCP022 are the only declared resume baseline and baseline answers are not newly counted'
+    $StaticExternalPositive = @($ParameterizedInstances | Where-Object { (Get-OptionalString $_ 'case_instance_id') -eq 'DG-032-external-document-positive' })[0]
+    $StaticExternalNegative = @($ParameterizedInstances | Where-Object { (Get-OptionalString $_ 'case_instance_id') -eq 'DG-032-external-document-negative' })[0]
+    Add-Static 'DG-032 positive declares unavailable decisive external document' ((Get-OptionalString $StaticExternalPositive 'initial_input') -match 'not available in this session' -and (Get-OptionalString $StaticExternalPositive 'initial_input') -match 'unverified' -and (Get-OptionalString $StaticExternalPositive 'initial_input') -match 'Do not infer') 'positive fixture preserves known and unknown material document facts with a verification owner'
+    Add-Static 'DG-032 negative remains non-binding and non-triggering' ((Get-OptionalString $StaticExternalNegative 'initial_input') -match 'non-binding' -and (Get-OptionalString $StaticExternalNegative 'checkpoint_expectation') -eq 'no material-trigger checkpoint') 'negative fixture has no decisive unavailable document dependency'
+    $StaticDG026 = @($Cases | Where-Object { $_.case_id -eq 'DG-026' })[0]
+    $StaticDG028 = @($Cases | Where-Object { $_.case_id -eq 'DG-028' })[0]
+    $DG026ContinueInput = @(Get-OptionalArray $StaticDG026 'ordered_subsequent_inputs')[1]
+    $DG028SecondRequirement = @((Get-OptionalArray $StaticDG028 'send_condition_requirements') | Where-Object { (Get-OptionalObject $_ 'input_index') -eq 2 })[0]
+    Add-Static 'DG-026 Continue fixture requires next material question without summary' ((Get-OptionalString $StaticDG026 'cli_initial_input') -match 'next unresolved material primary question' -and (Get-OptionalString $StaticDG026 'cli_initial_input') -match 'do not close or summarize' -and $DG026ContinueInput -match '^Continue interview') 'fixture exercises generic Continue branch rather than a closing path'
+    Add-Static 'DG-028 second-turn checkpoint control is reachable and exact' (@(Get-OptionalArray $StaticDG028 'ordered_subsequent_inputs').Count -eq 2 -and @(Get-OptionalArray $DG028SecondRequirement 'required_patterns') -contains '(?im)^##\s+Checkpoint control\b' -and @(Get-OptionalArray $DG028SecondRequirement 'required_patterns') -contains '(?im)^\s*-\s+Continue interview\b' -and @(Get-OptionalArray $StaticDG028 'ordered_subsequent_inputs')[0] -match 'do not approve') 'accepted fixture answer matches the recommended safe result before the separate control choice'
     $StaticRunnerClaims = Read-Utf8NoBom $PSCommandPath
     $StaticReadmeClaims = Read-Utf8NoBom (Join-Path $RepoRoot 'tests\automation\README.md')
     $StaticRemediationClaims = Read-Utf8NoBom $RemediationSpecPath
@@ -2371,6 +2540,20 @@ function Invoke-StaticTest {
 
         Add-Static $Scenario.name $AssertionPassed $AssertionDetail
     }
+    $DG003ProvisionalHeadingScenarios = @(
+        [pscustomobject]@{name='bold provisional decision';text='**Provisional decision**';pass=$true},
+        [pscustomobject]@{name='plain provisional option';text='Provisional option:';pass=$true},
+        [pscustomobject]@{name='recommended provisional option';text='Recommended provisional option:';pass=$true},
+        [pscustomobject]@{name='provisional decision subject heading';text='**Provisional decision — SMS incident alerts**';pass=$true},
+        [pscustomobject]@{name='missing provisional rejected';text='Recommended option:';pass=$false},
+        [pscustomobject]@{name='unlabelled subject rejected';text='SMS incident alerts';pass=$false},
+        [pscustomobject]@{name='non-heading provisional rejected';text='The provisional option is available.';pass=$false}
+    )
+    foreach ($Scenario in $DG003ProvisionalHeadingScenarios) {
+        $Actual = Test-SendCondition $DG003 $Scenario.text 2
+        $ExpectedOutcome = if ($Scenario.pass) { 'SEND' } else { 'BLOCKED' }
+        Add-Static ('DG-003 provisional heading ' + $Scenario.name) ($Actual.result -eq $ExpectedOutcome) ('expected=' + $ExpectedOutcome + '; actual=' + $Actual.result)
+    }
     $Dg003UnicodeExpected =
         (-join @(
             [char]0x662F
@@ -2519,14 +2702,14 @@ function Invoke-StaticTest {
         [pscustomobject]@{name='metadata-only missing or false'; evidence=@((New-StaticObjectiveEvidence $InventoryBeforeNoMetadata $InventoryAfterSame), (New-StaticObjectiveEvidence $InventoryBefore $InventoryAfterNoMetadata)); passed=$false}
     )
     foreach ($Scenario in $ObjectiveTests) { $Gates = @($Scenario.evidence | ForEach-Object { Test-ObjectiveEvidenceRequirements $DG017 $_ }); $Actual = @($Gates | Where-Object passed).Count -eq $Gates.Count; Add-Static "DG-017 $($Scenario.name)" ($Actual -eq $Scenario.passed) ((@($Gates | ForEach-Object { $_.missing -join ',' }) -join ';')) }
-    $Multi=@($Cases|Where-Object {@(Get-OptionalArray $_ 'ordered_subsequent_inputs').Length -gt 0});$Audit=@($Multi|ForEach-Object {$CaseUnderAudit=$_;$R=@(Get-OptionalArray $CaseUnderAudit 'send_condition_requirements');$I=@($R|ForEach-Object {Get-OptionalObject $_ 'input_index'});$InputCount=@(Get-OptionalArray $CaseUnderAudit 'ordered_subsequent_inputs').Length;$R.Length -eq $InputCount -and $I.Length -eq @($I|Select-Object -Unique).Length -and @($I|Where-Object {$_ -lt 1 -or $_ -gt $InputCount}).Length -eq 0});Add-Static '14-case requirements audit' ($Audit.Length -eq 14 -and -not ($Audit -contains $false)) 'indexed one-to-one'
+    $Multi=@($Cases|Where-Object {@(Get-OptionalArray $_ 'ordered_subsequent_inputs').Length -gt 0});$Audit=@($Multi|ForEach-Object {$CaseUnderAudit=$_;$R=@(Get-OptionalArray $CaseUnderAudit 'send_condition_requirements');$I=@($R|ForEach-Object {Get-OptionalObject $_ 'input_index'});$InputCount=@(Get-OptionalArray $CaseUnderAudit 'ordered_subsequent_inputs').Length;$R.Length -eq $InputCount -and $I.Length -eq @($I|Select-Object -Unique).Length -and @($I|Where-Object {$_ -lt 1 -or $_ -gt $InputCount}).Length -eq 0});Add-Static 'checkpoint catalog requirements audit' ($Audit.Length -eq $Multi.Length -and -not ($Audit -contains $false)) 'indexed one-to-one'
     $FixtureCatalog = @($Cases | ForEach-Object { [pscustomobject]@{ case_id=$_.case_id; fixtures=@(Get-OptionalArray $_ 'fixtures') } })
     $FixtureCase = $Cases | Where-Object case_id -eq 'DG-006'
     $ExpectedFixturePath = 'fixture-data/release-fact.txt'
     $ExpectedFixtureContent = 'Aurora pilot launch date: 2026-10-01'
-    Add-Static 'all 20 cases own required fixtures' ($FixtureCatalog.Count -eq 20 -and @($FixtureCatalog | Where-Object { $_.fixtures.Count -lt 0 }).Count -eq 0 -and @($Cases | Where-Object { -not (Test-ObjectProperty $_ 'fixtures') }).Count -eq 0) 'fixtures property present for every case'
+    Add-Static 'all 39 cases own required fixtures' ($FixtureCatalog.Count -eq 39 -and @($FixtureCatalog | Where-Object { $_.fixtures.Count -lt 0 }).Count -eq 0 -and @($Cases | Where-Object { -not (Test-ObjectProperty $_ 'fixtures') }).Count -eq 0) 'fixtures property present for every case'
     Add-Static 'DG-006 exact declarative fixture' (@($FixtureCase.fixtures).Count -eq 1 -and $FixtureCase.fixtures[0].relative_path -eq $ExpectedFixturePath -and $FixtureCase.fixtures[0].content -ceq $ExpectedFixtureContent) 'one exact fixture declaration'
-    Add-Static 'other 19 cases declare empty fixtures' (@($Cases | Where-Object { $_.case_id -ne 'DG-006' -and @(Get-OptionalArray $_ 'fixtures').Count -ne 0 }).Count -eq 0) 'empty arrays only'
+    Add-Static 'other cases declare empty fixtures' (@($Cases | Where-Object { $_.case_id -ne 'DG-006' -and @(Get-OptionalArray $_ 'fixtures').Count -ne 0 }).Count -eq 0) 'empty arrays only'
     foreach ($Scenario in @(
         [pscustomobject]@{name='missing fixtures';case=[pscustomobject]@{case_id='STATIC-fixture'};token='fixtures'},
         [pscustomobject]@{name='non-array fixtures';case=[pscustomobject]@{case_id='STATIC-fixture';fixtures='invalid'};token='fixtures must be an array'},
@@ -2537,12 +2720,16 @@ function Invoke-StaticTest {
         [pscustomobject]@{name='non-string content';case=[pscustomobject]@{case_id='STATIC-fixture';fixtures=@([pscustomobject]@{relative_path='a.txt';content=1})};token='content'},
         [pscustomobject]@{name='unsupported fixture property';case=[pscustomobject]@{case_id='STATIC-fixture';fixtures=@([pscustomobject]@{relative_path='a.txt';content='x';unexpected='x'})};token='unsupported property'}
     )) { $Failures=@(Test-FixtureMetadata $Scenario.case); Add-Static "fixture metadata $($Scenario.name) rejected" (($Failures -join '; ') -match $Scenario.token) ($Failures -join '; ') }
-    Add-Static '20-case prepare validation' (@($Cases|ForEach-Object {Test-CaseContract $_}|Where-Object {-not $_.passed}).Count -eq 0) 'case contracts'
+    Add-Static '39-case prepare validation' (@($Cases|ForEach-Object {Test-CaseContract $_}|Where-Object {-not $_.passed}).Count -eq 0) 'case contracts'
     $Source=Read-Utf8NoBom $PSCommandPath;$CatalogToken='Get-Indexed'+'SendConditionRequirements';Add-Static 'runner catalog absent' (-not ($Source -match $CatalogToken)) 'no case-specific catalog';$EvaluatorSource=$Source.Substring($Source.IndexOf('function Test-SendCondition'),$Source.IndexOf('function Invoke-ConditionalInput')-$Source.IndexOf('function Test-SendCondition'));Add-Static 'generic evaluator has no DG-xxx branch' (-not ($EvaluatorSource -match 'DG-\d{3}|case_id')) 'no case-specific evaluator branch';$FixtureSource=$Source.Substring($Source.IndexOf('function Resolve-CaseFixtureTargets'),$Source.IndexOf('function Invoke-Preflight')-$Source.IndexOf('function Resolve-CaseFixtureTargets'));$InvokeCaseSource=$Source.Substring($Source.IndexOf('function Invoke-Case'),$Source.IndexOf('function Invoke-StaticTest')-$Source.IndexOf('function Invoke-Case'));Add-Static 'generic fixture processor has no case selection' (-not ($FixtureSource -match 'DG-\d{3}|case_id|switch\s*\(') -and -not ($InvokeCaseSource -match '(?is)(?:if|switch)\s*\(\s*\$CaseId.*?(?:fixture|initialize)')) 'fixture production functions are data-driven';Add-Static 'DG-017 metadata-only safety' (($Source -match 'metadata-only') -and -not ($Source -match 'Get-InventoryDigest \$GlobalSkills')) 'no Skill content hashing'
     $StaticSkillSource = Read-Utf8NoBom $SourceSkill
     Add-Static 'Source Skill mandatory accepted-result invariant' ($StaticSkillSource -match '(?is)When the response accepts.*?MUST first record.*?formal acceptance ledger event.*?MUST NOT ask another question.*?Coverage Scan.*?summary.*?end the session' -and $StaticSkillSource -match '(?is)Accept recommendation:.*?MUST be recorded before any next question.*?Coverage Scan.*?summary.*?session end' -and $StaticSkillSource -notmatch 'DG-\d{3}') 'generic mandatory post-input ordering without case labels'
     Add-Static 'Source Skill accepted provisional decision invariant' ($StaticSkillSource -match '(?is)When the user accepts, selects, or says to use a provisional option.*?complete provisional decision.*?Status: PROVISIONAL.*?Do not leave the status conditional.*?do not advance to another question' -and $StaticSkillSource -notmatch 'DG-\d{3}') 'generic accepted provisional-decision record without case labels'
     Add-Static 'Source Skill formal supersession lifecycle invariant' ($StaticSkillSource -match 'Lifecycle: SUPERSEDED' -and $StaticSkillSource -match 'Do not put `SUPERSEDED` only in explanatory prose' -and $StaticSkillSource -notmatch 'DG-\d{3}') 'generic supersession output remains a labelled formal lifecycle record'
+    Add-Static 'Source Skill checkpoint control follows triggering ledger event' ($StaticSkillSource -match '(?is)checkpoint trigger is pending.*?records the triggering accepted result.*?next show the Checkpoint control.*?then stop' -and $StaticSkillSource -match '(?is)Do not replace that control with a summary.*?primary question about checkpoint behavior' -and $StaticSkillSource -notmatch 'DG-\d{3}') 'generic checkpoint control is non-primary and precedes summary or confirmation'
+    Add-Static 'Source Skill Continue interview preserves material continuation' ($StaticSkillSource -match '(?is)If the user continues.*?do not output a closing summary, checkpoint summary, convergence status, confirmation request, or session-ending language.*?directly ask the next unresolved material primary question.*?seventh-answer hard cap.*?genuine blocking dependency' -and $StaticSkillSource -notmatch 'DG-\d{3}') 'Continue and Create checkpoint are mutually exclusive generic paths'
+    Add-Static 'Source Skill cycle state uses formal BLOCKED record' ($StaticSkillSource -match '(?is)cycle appears.*?Decision item:.*?Status: BLOCKED' -and $StaticSkillSource -notmatch 'DG-\d{3}') 'generic cycle output exposes deterministic BLOCKED state evidence'
+    Add-Static 'Source Skill unconfirmed continuation repeats confirmation request' ($StaticSkillSource -match '(?is)continues without explicitly confirming.*?retain.*?NOT_CONVERGED.*?repeat the direct explicit-confirmation request' -and $StaticSkillSource -notmatch 'DG-\d{3}') 'generic confirmation-only branch remains open until explicit confirmation'
     $AggregationZero = [System.Collections.Generic.List[object]]::new()
     Add-CheckCollection $AggregationZero $null
     Add-Static 'production check aggregation handles null output' ($AggregationZero.Count -eq 0) 'null is no additional check'
@@ -2563,9 +2750,25 @@ function Invoke-StaticTest {
     Add-Static 'malformed preflight items become named internal checks' ($MalformedChecks.Count -eq 5 -and @($MalformedChecks | Where-Object { $_.name -like 'RUNNER_INTERNAL_ERROR:*' -and -not $_.passed }).Count -eq 5) 'null, blank, non-Boolean, identity, nested'
     $SyntheticModes = Test-SendConditionSynthetic $Cases
     Add-Static 'mode-aware synthetic gates use production evaluator outcomes' (@($SyntheticModes | Where-Object { -not $_.true_passed -or -not $_.false_passed }).Count -eq 0 -and @($SyntheticModes | Where-Object { $_.mode -eq 'conditional' -and $_.false_actual -ne 'SKIP' }).Count -eq 0) (($SyntheticModes | ForEach-Object { "$($_.case_id)/$($_.input_index) $($_.mode): false $($_.false_expected)/$($_.false_actual)" }) -join '; ')
+    $StaticDG004 = @($SyntheticModes | Where-Object { $_.case_id -eq 'DG-004' })[0]
+    Add-Static 'DG-004 bilingual formal-heading send condition' ($StaticDG004.true_actual -eq 'SEND' -and $StaticDG004.chinese_true_actual -eq 'SEND' -and $StaticDG004.false_actual -eq 'BLOCKED' -and $StaticDG004.wrong_turn_actual -eq 'BLOCKED') ('english={0}; chinese={1}; prose={2}; wrong_turn={3}' -f $StaticDG004.true_actual,$StaticDG004.chinese_true_actual,$StaticDG004.false_actual,$StaticDG004.wrong_turn_actual)
     $StaticGitRoot = Join-Path 'D:\temp' ('decision-grill-static-git-' + [guid]::NewGuid().ToString('N'))
     $SavedExpectedBranch = $script:ExpectedBranch; $SavedExpectedHead = $script:ExpectedHead
     try {
+        if (@($AuthorizedDirtyWorkingTree).Count -eq 0) {
+            $script:AuthorizedDirtyWorkingTree = @(
+                [pscustomobject]@{path='specs/SPEC-001-decision-grill-v0.1.md';xy=' M';sha256=$null},
+                [pscustomobject]@{path='skills/productivity/decision-grill/SKILL.md';xy=' M';sha256=$null},
+                [pscustomobject]@{path='docs/productivity/decision-grill.md';xy=' M';sha256=$null},
+                [pscustomobject]@{path='tests/manual/decision-grill-v0.1.md';xy=' M';sha256=$null},
+                [pscustomobject]@{path='tests/automation/decision-grill-cases.json';xy=' M';sha256=$null},
+                [pscustomobject]@{path='scripts/run-decision-grill-regression.ps1';xy=' M';sha256=$null},
+                [pscustomobject]@{path='tests/automation/decision-grill-judge-prompt.md';xy=' M';sha256=$null},
+                [pscustomobject]@{path='tests/automation/README.md';xy=' M';sha256=$null},
+                [pscustomobject]@{path='docs/productivity/Decision-Grill-使用手冊說明.md';xy=' M';sha256=$null},
+                [pscustomobject]@{path='安裝Skill工具-Decision-Grill.cmd';xy='??';sha256=$null}
+            )
+        }
         New-Item -ItemType Directory -Force -Path $StaticGitRoot | Out-Null
         [void](Invoke-GitText $StaticGitRoot @('init','-q'))
         [void](Invoke-GitText $StaticGitRoot @('config','user.email','decision-grill-static@example.invalid'))
@@ -2587,9 +2790,9 @@ function Invoke-StaticTest {
         Write-Utf8NoBom (Join-Path $StaticGitRoot 'extra.txt') 'extra'
         Add-Static 'working-tree extra path rejected' (-not (Test-WorkingTreeBaseline (Get-WorkingTreeIdentity $StaticGitRoot)).passed) 'extra untracked path'
         Remove-Item -LiteralPath (Join-Path $StaticGitRoot 'extra.txt') -Force
-        Remove-Item -LiteralPath (Join-Path $StaticGitRoot 'tests\automation\decision-grill-result.schema.json') -Force
+        Remove-Item -LiteralPath (Join-Path $StaticGitRoot '安裝Skill工具-Decision-Grill.cmd') -Force
         Add-Static 'working-tree missing authorized path rejected' (-not (Test-WorkingTreeBaseline (Get-WorkingTreeIdentity $StaticGitRoot)).passed) 'partial dirty baseline'
-        Write-Utf8NoBom (Join-Path $StaticGitRoot 'tests\automation\decision-grill-result.schema.json') 'untracked'
+        Write-Utf8NoBom (Join-Path $StaticGitRoot '安裝Skill工具-Decision-Grill.cmd') 'untracked'
         [void](Invoke-GitText $StaticGitRoot @('add','docs/productivity/decision-grill.md'))
         Add-Static 'working-tree staged entry rejected' (-not (Test-WorkingTreeBaseline (Get-WorkingTreeIdentity $StaticGitRoot)).passed) 'staged status is not allowed'
         [void](Invoke-GitText $StaticGitRoot @('reset','-q','HEAD','--','docs/productivity/decision-grill.md'))
@@ -2688,7 +2891,7 @@ function Invoke-StaticTest {
             $PromptBytesMatch = $Captured.prompt -ceq $Expected -and (($Utf8NoBom.GetBytes($Captured.prompt) -join ',') -eq ($Utf8NoBom.GetBytes($Expected) -join ',')) -and $Captured.arguments[-1] -eq '-' -and $Captured.name -eq 'case STATIC resume'
         }
         $MultiTurnFixtureCount = @($Cases | Where-Object { @(Get-OptionalArray $_ 'ordered_subsequent_inputs').Count -gt 0 }).Count
-        Add-Static 'all 14 multi-turn fixtures use production resume closure' ($PromptBytesMatch -and $MultiTurnFixtureCount -eq 14 -and $CapturedResumeCalls.Count -eq 17) "fixtures=$MultiTurnFixtureCount; prompts=$($CapturedResumeCalls.Count); exact UTF-8 prompt bytes and resume arguments"
+        Add-Static 'all multi-turn fixtures use production resume closure' ($PromptBytesMatch -and $MultiTurnFixtureCount -eq $Multi.Count -and $CapturedResumeCalls.Count -eq $ExpectedResumePrompts.Count) "fixtures=$MultiTurnFixtureCount; prompts=$($CapturedResumeCalls.Count); exact UTF-8 prompt bytes and resume arguments"
         $AutomaticInputPattern = [regex]::Escape('$') + '(?:[Ii]nput)\b'
         Add-Static 'production flow has no automatic Input variable collision' (-not ($Source -match $AutomaticInputPattern)) 'no automatic prompt-variable identifier remains'
         $script:StaticMockCallCount = 1
@@ -2811,16 +3014,25 @@ function Invoke-StaticTest {
 
 if ($Mode -eq 'StaticTest') { Invoke-StaticTest }
 
-$Cases = Read-Utf8NoBom $CasesPath | ConvertFrom-Json
-$ModeSelectionContract = Test-ModeCaseSelectionContract $Mode $CaseIds $Cases
+$Catalog = Read-Utf8NoBom $CasesPath | ConvertFrom-Json
+$Cases = @($Catalog.cases)
+$ParameterizedInstances = @($Catalog.parameterized_instances)
+$ParameterizedContract = Test-ParameterizedInstanceCatalog $ParameterizedInstances $Cases
+$ExecutionInstances = @(Expand-ParameterizedInstances $Cases $ParameterizedInstances)
+$ModeSelectionContract = if ($Mode -eq 'Targeted' -and -not [string]::IsNullOrWhiteSpace($CaseInstanceIds) -and [string]::IsNullOrWhiteSpace($CaseIds)) {
+    $InstanceSelection = Resolve-ParameterizedInstanceSelection $ExecutionInstances $CaseInstanceIds -Required
+    [pscustomobject]@{ passed=$InstanceSelection.passed; selection=$InstanceSelection; failures=@($InstanceSelection.failures) }
+} else {
+    Test-ModeCaseSelectionContract -RequestedMode $Mode -Declaration $CaseIds -Catalog $Cases -InstanceDeclaration $CaseInstanceIds -Instances $ExecutionInstances
+}
 if (-not $ModeSelectionContract.passed) {
-    Write-Error ("CASE_SELECTION_BLOCKED: " + ($ModeSelectionContract.failures -join '; '))
+    [Console]::Error.WriteLine("CASE_SELECTION_BLOCKED: " + ($ModeSelectionContract.failures -join '; '))
     exit 2
 }
 New-OutputLayout
 $Checks = Invoke-Preflight
 $PreflightPassed = @($Checks | Where-Object { -not $_.passed }).Count -eq 0
-$RequiredIds = 1..20 | ForEach-Object { 'DG-{0:D3}' -f $_ }
+$RequiredIds = 1..39 | ForEach-Object { 'DG-{0:D3}' -f $_ }
 $CaseContracts = @($Cases | ForEach-Object { Test-CaseContract $_ })
 $StateAssertionAudit = @($Cases | ForEach-Object { Get-StateAssertionAudit $_ })
 $StateAuditFailures = @($StateAssertionAudit | Where-Object { -not $_.passed })
@@ -2834,21 +3046,23 @@ $SendConditionAuditPath = Join-Path $ResultsDir 'send-condition-audit.json'
 $MultiTurnSendAudit | ConvertTo-Json -Depth 12 | ForEach-Object { Write-Utf8NoBom $SendConditionAuditPath $_ }
 $SendConditionSynthetic = Test-SendConditionSynthetic $Cases
 $ContractFailures = @($CaseContracts | Where-Object { -not $_.passed })
-$ContractFailureDetail = if ($ContractFailures.Count) { (($ContractFailures | ForEach-Object { $_.failures }) -join '; ') } else { 'all 20 cases passed required-property and deterministic prepare validation' }
+$ContractFailureDetail = if ($ContractFailures.Count) { (($ContractFailures | ForEach-Object { $_.failures }) -join '; ') } else { 'all 39 cases passed required-property and deterministic prepare validation' }
 $CatalogChecks = @(
-    [pscustomobject]@{ name='cases count'; passed=(@($Cases).Count -eq 20); detail=@($Cases).Count },
+    [pscustomobject]@{ name='cases count'; passed=(@($Cases).Count -eq 39); detail=@($Cases).Count },
     [pscustomobject]@{ name='case IDs complete'; passed=(((($CaseContracts.case_id | Sort-Object) -join ',') -eq (($RequiredIds | Sort-Object) -join ','))); detail=($CaseContracts.case_id -join ',') },
     [pscustomobject]@{ name='required case-property audit'; passed=($ContractFailures.Count -eq 0); detail=$ContractFailureDetail },
-    [pscustomobject]@{ name='20-case deterministic prepare validation'; passed=($CaseContracts.Count -eq 20 -and $ContractFailures.Count -eq 0); detail=$ContractFailureDetail },
+    [pscustomobject]@{ name='39-case deterministic prepare validation'; passed=($CaseContracts.Count -eq 39 -and $ContractFailures.Count -eq 0); detail=$ContractFailureDetail },
+    [pscustomobject]@{ name='parameterized instance uniqueness and completeness'; passed=($ParameterizedContract.passed -and $ParameterizedContract.count -eq 10); detail=("instances={0}; failures={1}" -f $ParameterizedContract.count,($ParameterizedContract.failures -join '; ')) },
+    [pscustomobject]@{ name='total executable instances'; passed=(@($Cases + $ExecutionInstances).Count -gt 39); detail=@($Cases + $ExecutionInstances).Count },
     [pscustomobject]@{ name='desktop and CLI input present'; passed=($ContractFailures.Count -eq 0); detail='validated by required case-property audit' },
-    [pscustomobject]@{ name='20-case state-semantics audit'; passed=($StateAuditFailures.Count -eq 0); detail=if ($StateAuditFailures.Count) { ($StateAuditFailures | ForEach-Object { "$($_.case_id): $($_.failures -join '; ')" }) -join ' | ' } else { 'all state assertions explicitly classified; legacy required_states=all-of' } },
+    [pscustomobject]@{ name='39-case state-semantics audit'; passed=($StateAuditFailures.Count -eq 0); detail=if ($StateAuditFailures.Count) { ($StateAuditFailures | ForEach-Object { "$($_.case_id): $($_.failures -join '; ')" }) -join ' | ' } else { 'all state assertions explicitly classified; legacy required_states=all-of' } },
     [pscustomobject]@{ name='DG-002 state any-of synthetic OPEN'; passed=$StateSynthetic.open_any_of_pass; detail=if ($StateSynthetic.open_any_of_pass) { 'OPEN explicit marker satisfies any-of' } else { $StateSynthetic.open_failures -join '; ' } },
     [pscustomobject]@{ name='DG-002 forbidden CONFIRMED synthetic'; passed=$StateSynthetic.confirmed_forbidden_fail; detail=if ($StateSynthetic.confirmed_forbidden_fail) { 'CONFIRMED explicit marker fails' } else { $StateSynthetic.confirmed_failures -join '; ' } },
     [pscustomobject]@{ name='all multi-turn cases send-condition audit'; passed=($MultiTurnSendAuditFailures.Count -eq 0); detail=if ($MultiTurnSendAuditFailures.Count) { ($MultiTurnSendAuditFailures.case_id -join ', ') } else { "$($MultiTurnSendAudit.Count) multi-turn cases have send condition and observable prerequisite" } },
     [pscustomobject]@{ name='send-condition synthetic gates'; passed=(@($SendConditionSynthetic | Where-Object { -not $_.true_passed -or -not $_.false_passed }).Count -eq 0); detail=($SendConditionSynthetic | ForEach-Object { "case=$($_.case_id); index=$($_.input_index); mode=$($_.mode); true expected=$($_.true_expected) actual=$($_.true_actual); false expected=$($_.false_expected) actual=$($_.false_actual)" }) -join '; ' }
 )
 Add-CheckCollection $Checks $CatalogChecks 'catalog checks'
-if ($Mode -in @('Targeted','DryRun') -and -not [string]::IsNullOrWhiteSpace($CaseIds)) {
+if ($Mode -in @('Targeted','DryRun') -and (-not [string]::IsNullOrWhiteSpace($CaseIds) -or -not [string]::IsNullOrWhiteSpace($CaseInstanceIds))) {
     Add-Check $Checks 'generic case selection' ($ModeSelectionContract.selection.selected_cases.Count -gt 0) ("selected={0}; order={1}" -f $ModeSelectionContract.selection.selected_cases.Count,($ModeSelectionContract.selection.selected_case_ids -join ','))
 }
 $TranscriptSelfTest = Test-TranscriptExtraction
@@ -2883,7 +3097,7 @@ $ExplicitSkillResult = 'NOT_RUN'
 $ResumeProbeResult = 'NOT_RUN'
 $Utf8TransportResult = 'NOT_RUN'
 if (-not $PreflightPassed) {
-    $Results.Add([pscustomobject]@{ case_id='PREFLIGHT'; title='Required environment checks'; result='BLOCKED'; deterministic=@{result='BLOCKED';failures=@($Checks | Where-Object {-not $_.passed} | ForEach-Object {$_.name})}; judge=$null; thread_id=$null; evidence_excerpt='No case executed.'; before_hash=$null; after_hash=$null; review_required=$true })
+    $RunStop = [pscustomobject]@{ stop_reason='PREFLIGHT_FAILED'; trigger_case_id=$null; trigger_stage='preflight'; last_completed_case=$null; remaining_cases=@($ModeSelectionContract.selection.selected_case_ids) }
 } elseif ($Mode -eq 'Discovery') {
     $ExplicitSkillResult = Test-ExplicitSkillAdapter 'D:\temp\decision-grill-cli-probe.jsonl'
     if ($ExplicitSkillResult -notmatch '^PASS') {
@@ -2912,12 +3126,13 @@ if (-not $PreflightPassed) {
         foreach ($BlockedCase in $AdapterBlockedCases) { $Results.Add([pscustomobject]@{ case_id=$BlockedCase.case_id; title=$BlockedCase.title; result='BLOCKED'; deterministic=@{result='BLOCKED';failures=@($ExplicitSkillResult)}; judge=$null; thread_id=$null; evidence_excerpt=$ExplicitSkillResult; before_hash=$null; after_hash=$null; review_required=$true }) }
     } else {
     $Selection = if ($Mode -eq 'Core') { @('DG-016','DG-011','DG-002') } elseif ($Mode -eq 'Targeted') { @($ModeSelectionContract.selection.selected_case_ids) } else { $RequiredIds }
-    $SelectedCases = @($Selection | ForEach-Object { $Cases | Where-Object case_id -eq $_ })
+    $SelectedCases = if ($Mode -eq 'Full') { @($Cases + $ExecutionInstances) } elseif ($Mode -eq 'Targeted') { @($ModeSelectionContract.selection.selected_cases) } else { @($Selection | ForEach-Object { $Cases | Where-Object case_id -eq $_ }) }
     $SelectionRun = Invoke-SelectedCases $SelectedCases { param($SelectedCase) Invoke-Case $SelectedCase }
     $RunStop = $SelectionRun.stop
     foreach ($Result in @($SelectionRun.results)) {
         $Results.Add($Result)
-        $Result | ConvertTo-Json -Depth 15 | ForEach-Object { Write-Utf8NoBom (Join-Path $ResultsDir "$($Result.case_id).json") $_ }
+        $ResultKey = Get-OptionalString $Result 'case_instance_id' $Result.case_id
+        $Result | ConvertTo-Json -Depth 15 | ForEach-Object { Write-Utf8NoBom (Join-Path $ResultsDir "$ResultKey.json") $_ }
     }
     }
 }
@@ -2925,7 +3140,7 @@ $ProductSpecSha256 = if (Test-Path -LiteralPath $ProductSpecPath -PathType Leaf)
 $RemediationSpecSha256 = if (Test-Path -LiteralPath $RemediationSpecPath -PathType Leaf) { Get-Sha256 -LiteralPath $RemediationSpecPath } else { $null }
 $SpecHashVerification = [pscustomobject]@{ product_spec_path=$ProductSpecPath; product_spec_sha256=$ProductSpecSha256; product_spec_sha256_expected=$ExpectedProductSpecSha256; product_spec_sha256_verified=($ProductSpecSha256 -eq $ExpectedProductSpecSha256); remediation_spec_path=$RemediationSpecPath; remediation_spec_sha256=$RemediationSpecSha256; remediation_spec_sha256_expected=$ExpectedRemediationSpecSha256; remediation_spec_sha256_verified=($RemediationSpecSha256 -eq $ExpectedRemediationSpecSha256) }
 Assert-WorkingTreeIdentity -Purpose 'before results and report persistence'
-$Planned = if ($Mode -eq 'Core') { 3 } elseif ($Mode -eq 'Full') { 20 } elseif ($Mode -eq 'Targeted') { $ModeSelectionContract.selection.selected_cases.Count } elseif ($Mode -eq 'DryRun' -and -not [string]::IsNullOrWhiteSpace($CaseIds)) { $ModeSelectionContract.selection.selected_cases.Count } else { $Results.Count }
+$Planned = if ($Mode -eq 'Core') { 3 } elseif ($Mode -eq 'Full') { @($Cases + $ExecutionInstances).Count } elseif ($Mode -eq 'Targeted') { $ModeSelectionContract.selection.selected_cases.Count } elseif ($Mode -eq 'DryRun' -and -not [string]::IsNullOrWhiteSpace($CaseIds)) { $ModeSelectionContract.selection.selected_cases.Count } else { $Results.Count }
 $ExecutedOverride = if ($Mode -eq 'DryRun' -and -not [string]::IsNullOrWhiteSpace($CaseIds)) { 0 } else { -1 }
 $Summary = Get-RunSummary @($Results) $Planned $ExecutedOverride
 $Aggregate = [pscustomobject]@{ mode=$Mode; case_selection=$ModeSelectionContract.selection; generated_at=(Get-Date).ToString('o'); output_root=$OutputRoot; active_folder=$ActiveFolder; skill_hash_validation=$SkillHashValidation; codex=@{ resolved_path=$ResolvedCodexPath; version=$CodexVersion; is_windowsapps=$CodexIsWindowsApps }; spec_hash_verification=$SpecHashVerification; preflight=$Checks; run_stop=$RunStop; summary=$Summary; state_semantics_audit_path=$StateAuditPath; state_semantics_audit=@($StateAssertionAudit); state_semantics_synthetic=$StateSynthetic; send_condition_audit_path=$SendConditionAuditPath; send_condition_audit=@($MultiTurnSendAudit); send_condition_synthetic=$SendConditionSynthetic; transcript_extraction_self_test=$TranscriptSelfTest; unicode_round_trip_probe=$UnicodeRoundTripResult; cli_explicit_skill_invocation=$ExplicitSkillResult; resume_transport_probe=$ResumeProbeResult; utf8_transport_probe=$Utf8TransportResult; cases=@($Results) }
@@ -2935,7 +3150,7 @@ $TriggerCaseText = if ($null -eq $RunStop) { 'none' } else { $RunStop.trigger_ca
 $TriggerStageText = if ($null -eq $RunStop) { 'none' } else { $RunStop.trigger_stage }
 $LastCompletedText = if ($null -eq $RunStop) { 'none' } else { $RunStop.last_completed_case }
 $RemainingCasesText = if ($null -eq $RunStop) { 'none' } else { $RunStop.remaining_cases -join ', ' }
-$Md = @("# Decision-Grill Regression Report", "", "Mode: $Mode", "", "## Case Selection", "", "- declaration: $CaseIds", "- selected canonical order: $($ModeSelectionContract.selection.selected_case_ids -join ', ')", "- selected count: $($ModeSelectionContract.selection.selected_cases.Count)", "", "## ActiveFolder and Skill Validation", "", "- ActiveFolder: $ActiveFolder", "- source Skill path: $($SkillHashValidation.source_skill_path)", "- source Skill SHA-256: $($SkillHashValidation.source_skill_sha256)", "- installed Skill path: $($SkillHashValidation.installed_skill_path)", "- installed Skill SHA-256: $($SkillHashValidation.installed_skill_sha256)", "- hashes match: $($SkillHashValidation.hashes_match)", "", "## Spec Hash Verification", "", "- product spec path: $($SpecHashVerification.product_spec_path)", "- product spec SHA-256: $($SpecHashVerification.product_spec_sha256)", "- product spec SHA-256 expected: $($SpecHashVerification.product_spec_sha256_expected)", "- remediation spec path: $($SpecHashVerification.remediation_spec_path)", "- remediation spec SHA-256: $($SpecHashVerification.remediation_spec_sha256)", "- remediation spec SHA-256 expected: $($SpecHashVerification.remediation_spec_sha256_expected)", "- remediation spec SHA-256 verified: $($SpecHashVerification.remediation_spec_sha256_verified)", "", "## Codex CLI", "", "- resolved CodexPath: $ResolvedCodexPath", "- CLI version: $CodexVersion", "- WindowsApps: $CodexIsWindowsApps", "", "## Preflight", "") + ($Checks | ForEach-Object {
+$Md = @("# Decision-Grill Regression Report", "", "Mode: $Mode", "", "## Case Selection", "", "- case declaration: $CaseIds", "- parameterized instance declaration: $CaseInstanceIds", "- selected canonical order: $($ModeSelectionContract.selection.selected_case_ids -join ', ')", "- selected count: $($ModeSelectionContract.selection.selected_cases.Count)", "", "## ActiveFolder and Skill Validation", "", "- ActiveFolder: $ActiveFolder", "- source Skill path: $($SkillHashValidation.source_skill_path)", "- source Skill SHA-256: $($SkillHashValidation.source_skill_sha256)", "- installed Skill path: $($SkillHashValidation.installed_skill_path)", "- installed Skill SHA-256: $($SkillHashValidation.installed_skill_sha256)", "- hashes match: $($SkillHashValidation.hashes_match)", "", "## Spec Hash Verification", "", "- product spec path: $($SpecHashVerification.product_spec_path)", "- product spec SHA-256: $($SpecHashVerification.product_spec_sha256)", "- product spec SHA-256 expected: $($SpecHashVerification.product_spec_sha256_expected)", "- remediation spec path: $($SpecHashVerification.remediation_spec_path)", "- remediation spec SHA-256: $($SpecHashVerification.remediation_spec_sha256)", "- remediation spec SHA-256 expected: $($SpecHashVerification.remediation_spec_sha256_expected)", "- remediation spec SHA-256 verified: $($SpecHashVerification.remediation_spec_sha256_verified)", "", "## Codex CLI", "", "- resolved CodexPath: $ResolvedCodexPath", "- CLI version: $CodexVersion", "- WindowsApps: $CodexIsWindowsApps", "", "## Preflight", "") + ($Checks | ForEach-Object {
     $Line = "- $($_.name): $(if ($_.passed) {'PASS'} else {'BLOCKED'}) — $($_.detail)"
     $ExceptionProperty = $_.PSObject.Properties['exception']
     $ExceptionDetail = if ($ExceptionProperty) { $ExceptionProperty.Value } else { $null }
@@ -2943,7 +3158,7 @@ $Md = @("# Decision-Grill Regression Report", "", "Mode: $Mode", "", "## Case Se
         $Line += "`n  - exception type: $($ExceptionDetail.exception_type)`n  - message: $($ExceptionDetail.message)`n  - script line: $($ExceptionDetail.script_line)`n  - failing check: $($ExceptionDetail.failing_check)`n  - exact command: $($ExceptionDetail.exact_command)"
     }
     $Line
-}) + @("", "## Run Summary", "", "- PASS: $($Summary.categories.PASS)", "- FAIL: $($Summary.categories.FAIL)", "- BLOCKED: $($Summary.categories.BLOCKED)", "- RUNNER_INTERNAL_ERROR: $($Summary.categories.RUNNER_INTERNAL_ERROR)", "- NOT_EXECUTED: $($Summary.categories.NOT_EXECUTED)", "- Executed: $($Summary.executed)", "- Planned: $($Summary.planned)", "- Total: $($Summary.total)", "- Category sum matches Planned: $($Summary.category_sum_matches_planned)", "", "## Run Stop", "", "- stop reason: $StopReasonText", "- trigger case: $TriggerCaseText", "- trigger stage: $TriggerStageText", "- last completed case: $LastCompletedText", "- remaining cases: $RemainingCasesText", "", "## Cases", "") + ($Results | ForEach-Object { "- $($_.case_id) — $($_.result)" })
+}) + @("", "## Run Summary", "", "- PASS: $($Summary.categories.PASS)", "- FAIL: $($Summary.categories.FAIL)", "- BLOCKED: $($Summary.categories.BLOCKED)", "- RUNNER_INTERNAL_ERROR: $($Summary.categories.RUNNER_INTERNAL_ERROR)", "- NOT_EXECUTED: $($Summary.categories.NOT_EXECUTED)", "- Executed: $($Summary.executed)", "- Planned: $($Summary.planned)", "- Total: $($Summary.total)", "- Category sum matches Executed: $($Summary.category_sum_matches_executed)", "- Category sum matches Planned: $($Summary.category_sum_matches_planned)", "- Planned equals Executed: $($Summary.planned_equals_executed)", "", "## Run Stop", "", "- stop reason: $StopReasonText", "- trigger case: $TriggerCaseText", "- trigger stage: $TriggerStageText", "- last completed case: $LastCompletedText", "- remaining cases: $RemainingCasesText", "", "## Cases", "") + ($Results | ForEach-Object { "- $($_.case_id) — $($_.result)" })
 Write-Utf8NoBom (Join-Path $OutputRoot 'decision-grill-regression-report.md') ($Md -join [Environment]::NewLine)
 Assert-WorkingTreeIdentity -Purpose 'run completion'
 $Exit = Get-RunExitCode @($Results) $PreflightPassed
