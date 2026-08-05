@@ -1,4 +1,5 @@
-[
+{
+  "cases": [
   {
     "case_id": "DG-001",
     "title": "Normal answerable decision",
@@ -122,8 +123,8 @@
     "send_condition_requirements": [
       {
         "required_patterns": [
-          "(?im)^###\\s+Q-\\d{3}\\b",
-          "(?i)SMS.*incident.*alerts",
+          "(?im)^###\\s+Q-001\\b",
+        "(?i)SMS.*(?:incident.*alerts|事故.*告警)",
           "(?i)Reply by"
         ],
         "input_index": 1,
@@ -181,18 +182,18 @@
         "require_question_format": true,
         "required_term_groups": [
           ["SMS"],
-          ["event", "事件", "incident"],
+          ["event", "事件", "事故", "incident"],
           ["alert", "alerts", "告警", "警示"]
         ],
         "input_index": 1,
         "mode": "required"
       },
       {
-        "input_index": 2,
-        "mode": "required",
-        "required_explicit_states": [
-          "PROVISIONAL"
-        ]
+      "input_index": 2,
+      "mode": "required",
+      "required_patterns": [
+        "(?im)^\\s*(?:\\*\\*)?(?:Recommended\\s+)?Provisional\\s+(?:decision(?:\\s+option)?|option)(?:\\*\\*)?(?:\\s+(?:—|-)\\s+\\S.+)?\\s*:?\\s*$"
+      ]
       }
     ]
   },
@@ -240,8 +241,8 @@
     "send_condition_requirements": [
       {
         "required_patterns": [
-          "(?im)^###\\s+Q-\\d{3}\\b",
-          "(?i)announcement"
+          "(?im)^###\\s+Q-001\\b",
+          "(?i)(?:announcement|公告)"
         ],
         "input_index": 1,
         "mode": "required"
@@ -454,7 +455,7 @@
       {
         "required_patterns": [
           "(?i)full rollout",
-          "(?i)support"
+          "(?i)(?:support|支援)"
         ],
         "input_index": 2,
         "mode": "required"
@@ -745,7 +746,7 @@
     "fixture_setup": "At least one condition unmet.",
     "fixtures": [],
     "desktop_initial_input": "/decision-grill\nStart a decision interview. Goal: decide Aurora pilot launch. Show the summary.",
-    "cli_initial_input": "$decision-grill\nStart a decision interview. Goal: decide Aurora pilot launch. Show the summary.",
+    "cli_initial_input": "$decision-grill\nStart a decision interview. Goal: decide Aurora pilot launch. Stop now and show the required eight-section NOT_CONVERGED summary.",
     "ordered_subsequent_inputs": [],
     "send_condition": "First response only.",
     "expected_behavior": "NOT_CONVERGED with all eight sections and None for empty sections.",
@@ -1073,4 +1074,1304 @@
       "(?im)^###\\s+Q-\\d{3}\\b"
     ]
   }
-]
+,
+{
+  "case_id": "DG-021",
+  "title": "Fifth counted answer offers checkpoint",
+  "judge_semantic_requirements": [
+    {
+      "id": "checkpoint_contract",
+      "description": "The transcript follows the declared checkpoint, lineage, resume, or refusal behavior without treating a control as a primary question."
+    }
+  ],
+  "execution_priority": "full",
+  "fixture_setup": "Fresh isolated session. Primary Question ID QCP021; decision item D-CP-021; no repository mutation.",
+  "fixtures": [],
+  "desktop_initial_input": "/decision-grill\nStart a bounded checkpoint fixture for D-CP-021. Create OPEN primary question QCP021: decide whether to approve the declared material Aurora pilot scope. Recommend the safe material option. After its accepted result, show a non-primary Checkpoint control and wait for the separate user choice; do not make checkpoint behavior a primary question.",
+  "cli_initial_input": "$decision-grill\nStart a bounded checkpoint fixture for D-CP-021. Create OPEN primary question QCP021: decide whether to approve the declared material Aurora pilot scope. Recommend the safe material option. After its accepted result, show a non-primary Checkpoint control and wait for the separate user choice; do not make checkpoint behavior a primary question.",
+  "ordered_subsequent_inputs": [
+      "Accept QCP021 recommendation exactly: use the declared safe material option."
+  ],
+  "send_condition": "Only after primary question QCP021 is visible with a recommendation.",
+  "expected_behavior": "Fifth counted answer offers checkpoint. Record the accepted result before any checkpoint-sensitive output.",
+  "observable_evidence": "QCP021 primary question and a visible ANSWERED ledger event for D-CP-021; no file mutation.",
+  "pass_conditions": [
+    "visible accepted-result ledger event for QCP021",
+    "no product file mutation"
+  ],
+  "fail_conditions": [
+    "missing accepted-result event",
+    "tool or file mutation"
+  ],
+  "blocked_conditions": [
+    "project-level Skill unavailable",
+    "session cannot accept invocation"
+  ],
+  "allowed_tools": [],
+  "forbidden_tools": [
+    "all product-modifying tools"
+  ],
+  "file_mutation_policy": "no file change",
+  "automatic_skill_invocation_policy": "decision-grill only; no automatic other Skill",
+  "required_keywords": [
+    "QCP021",
+    "Recommended answer"
+  ],
+  "required_states": [
+    "ANSWERED"
+  ],
+  "send_condition_requirements": [
+    {
+      "input_index": 1,
+      "mode": "required",
+      "required_patterns": [
+        "(?im)^###\\s+QCP021\\b",
+        "(?im)^\\*\\*Recommended answer:\\*\\*"
+      ],
+      "forbidden_patterns": []
+    }
+  ],
+  "post_input_ordered_assertions": [],
+  "checkpoint_fixture": {
+    "primary_question_id": "QCP021",
+    "decision_item_id": "D-CP-021",
+    "accepted_answer": "use the declared safe option",
+    "fixture_kind": "Fifth counted answer offers checkpoint"
+  }
+}
+,
+{
+  "case_id": "DG-022",
+  "title": "Continue after fifth answer",
+  "judge_semantic_requirements": [
+    {
+      "id": "checkpoint_contract",
+      "description": "The transcript follows the declared checkpoint, lineage, resume, or refusal behavior without treating a control as a primary question."
+    }
+  ],
+  "execution_priority": "full",
+  "fixture_setup": "Fresh isolated session. Four effective ANSWERED baseline decisions precede material primary Question ID QCP022; decision item D-CP-022; no repository mutation.",
+  "fixtures": [],
+  "desktop_initial_input": "/decision-grill\nResume a bounded checkpoint fixture for D-CP-022 with four already effective ANSWERED baseline decisions. Create OPEN primary question QCP022: decide whether to approve the new material Aurora pilot rollout decision. Recommend the declared safe option. Preserve the four restored answers plus QCP022 as the sole resume baseline; do not re-ask a baseline question or pretend baseline answers count in the new interval. Ask QCP022 only.",
+  "cli_initial_input": "$decision-grill\nResume a bounded checkpoint fixture for D-CP-022 with four already effective ANSWERED baseline decisions. Create OPEN primary question QCP022: decide whether to approve the new material Aurora pilot rollout decision. Recommend the declared safe option. Preserve the four restored answers plus QCP022 as the sole resume baseline; do not re-ask a baseline question or pretend baseline answers count in the new interval. Ask QCP022 only.",
+  "ordered_subsequent_inputs": [
+      "Accept QCP022 recommendation exactly: do not approve the new material Aurora pilot rollout decision."
+  ],
+  "send_condition": "Only after resumed material primary question QCP022 is visible with a recommendation.",
+  "expected_behavior": "Record the accepted result for the new material decision; use the four prior ANSWERED items plus QCP022 as one resume baseline without counting baseline answers in the new interval.",
+  "observable_evidence": "Resumed material QCP022 and one visible ANSWERED ledger event with one consistent resume baseline; no file mutation.",
+  "pass_conditions": [
+    "visible accepted-result ledger event for QCP022",
+    "no product file mutation"
+  ],
+  "fail_conditions": [
+    "missing accepted-result event",
+    "tool or file mutation"
+  ],
+  "blocked_conditions": [
+    "project-level Skill unavailable",
+    "session cannot accept invocation"
+  ],
+  "allowed_tools": [],
+  "forbidden_tools": [
+    "all product-modifying tools"
+  ],
+  "file_mutation_policy": "no file change",
+  "automatic_skill_invocation_policy": "decision-grill only; no automatic other Skill",
+  "required_keywords": [
+    "QCP022",
+    "Recommended answer"
+  ],
+  "required_states": [
+    "ANSWERED"
+  ],
+  "send_condition_requirements": [
+      {
+      "input_index": 1,
+      "mode": "required",
+      "required_patterns": [
+        "(?im)^###\\s+QCP022\\b",
+        "(?im)^\\*\\*Recommended answer:\\*\\*"
+      ],
+        "forbidden_patterns": []
+      }
+  ],
+  "post_input_ordered_assertions": [],
+  "checkpoint_fixture": {
+    "primary_question_id": "QCP022",
+    "decision_item_id": "D-CP-022",
+    "accepted_answer": "use the declared safe option",
+    "fixture_kind": "Continue after fifth answer"
+  }
+}
+,
+{
+  "case_id": "DG-023",
+  "title": "Seventh answer blocked checkpoint",
+  "judge_semantic_requirements": [
+    {
+      "id": "checkpoint_contract",
+      "description": "The transcript follows the declared checkpoint, lineage, resume, or refusal behavior without treating a control as a primary question."
+    }
+  ],
+  "execution_priority": "full",
+  "fixture_setup": "Fresh isolated session. Primary Question ID QCP023; decision item D-CP-023; no repository mutation.",
+  "fixtures": [],
+  "desktop_initial_input": "/decision-grill\nStart a bounded checkpoint fixture for D-CP-023. Create OPEN primary question QCP023: decide whether to accept the stated material legal-liability condition for the Aurora pilot. Recommend the declared safe option. After an accepted result, show a non-primary checkpoint control and wait for a separate user choice. Ask QCP023 only.",
+  "cli_initial_input": "$decision-grill\nStart a bounded checkpoint fixture for D-CP-023. Create OPEN primary question QCP023: decide whether to accept the stated material legal-liability condition for the Aurora pilot. Recommend the declared safe option. After an accepted result, show a non-primary checkpoint control and wait for a separate user choice. Ask QCP023 only.",
+  "ordered_subsequent_inputs": [
+    "Accept QCP023 recommendation exactly: do not accept the stated material legal-liability condition.",
+    "Continue interview without creating a checkpoint."
+  ],
+  "send_condition": "Only after primary question QCP023 is visible with a recommendation.",
+  "expected_behavior": "Seventh answer blocked checkpoint. Record the accepted result before any checkpoint-sensitive output.",
+  "observable_evidence": "QCP023 primary question and a visible ANSWERED ledger event for D-CP-023; no file mutation.",
+  "pass_conditions": [
+    "visible accepted-result ledger event for QCP023",
+    "no product file mutation"
+  ],
+  "fail_conditions": [
+    "missing accepted-result event",
+    "tool or file mutation"
+  ],
+  "blocked_conditions": [
+    "project-level Skill unavailable",
+    "session cannot accept invocation"
+  ],
+  "allowed_tools": [],
+  "forbidden_tools": [
+    "all product-modifying tools"
+  ],
+  "file_mutation_policy": "no file change",
+  "automatic_skill_invocation_policy": "decision-grill only; no automatic other Skill",
+  "required_keywords": [
+    "QCP023",
+    "Recommended answer"
+  ],
+  "required_states": [
+    "ANSWERED"
+  ],
+  "send_condition_requirements": [
+    {
+      "input_index": 1,
+      "mode": "required",
+        "required_patterns": [
+          "(?im)^###\\s+QCP023\\b",
+          "(?im)^\\*\\*Recommended answer:\\*\\*"
+        ],
+        "forbidden_patterns": []
+      },
+      {
+        "input_index": 2,
+        "mode": "required",
+        "required_patterns": ["(?im)^##\\s+Checkpoint control\\b", "(?im)^\\s*-\\s+Continue interview\\b"],
+        "forbidden_patterns": []
+      }
+  ],
+  "post_input_ordered_assertions": [],
+  "checkpoint_fixture": {
+    "primary_question_id": "QCP023",
+    "decision_item_id": "D-CP-023",
+    "accepted_answer": "use the declared safe option",
+    "fixture_kind": "Seventh answer blocked checkpoint"
+  }
+}
+,
+{
+  "case_id": "DG-024",
+  "title": "Seventh answer confirmation",
+  "judge_semantic_requirements": [
+    {
+      "id": "checkpoint_contract",
+      "description": "The transcript follows the declared checkpoint, lineage, resume, or refusal behavior without treating a control as a primary question."
+    }
+  ],
+  "execution_priority": "full",
+  "fixture_setup": "Fresh isolated session. Primary Question ID QCP024; decision item D-CP-024; no repository mutation.",
+  "fixtures": [],
+  "desktop_initial_input": "/decision-grill\nStart a bounded checkpoint fixture for D-CP-024. Create OPEN primary question QCP024: decide whether to authorize the material Aurora pilot readiness review. Recommend the safe material option. After its accepted result, show a non-primary Checkpoint control; do not make checkpoint behavior a primary question.",
+  "cli_initial_input": "$decision-grill\nStart a bounded checkpoint fixture for D-CP-024. Create OPEN primary question QCP024: decide whether to authorize the material Aurora pilot readiness review. Recommend the safe material option. After its accepted result, show a non-primary Checkpoint control; do not make checkpoint behavior a primary question.",
+  "ordered_subsequent_inputs": [
+      "Accept QCP024 recommendation exactly: use the declared safe material option."
+  ],
+  "send_condition": "Only after primary question QCP024 is visible with a recommendation.",
+  "expected_behavior": "Seventh answer confirmation. Record the accepted result before any checkpoint-sensitive output.",
+  "observable_evidence": "QCP024 primary question and a visible ANSWERED ledger event for D-CP-024; no file mutation.",
+  "pass_conditions": [
+    "visible accepted-result ledger event for QCP024",
+    "no product file mutation"
+  ],
+  "fail_conditions": [
+    "missing accepted-result event",
+    "tool or file mutation"
+  ],
+  "blocked_conditions": [
+    "project-level Skill unavailable",
+    "session cannot accept invocation"
+  ],
+  "allowed_tools": [],
+  "forbidden_tools": [
+    "all product-modifying tools"
+  ],
+  "file_mutation_policy": "no file change",
+  "automatic_skill_invocation_policy": "decision-grill only; no automatic other Skill",
+  "required_keywords": [
+    "QCP024",
+    "Recommended answer"
+  ],
+  "required_states": [
+    "ANSWERED"
+  ],
+  "send_condition_requirements": [
+    {
+      "input_index": 1,
+      "mode": "required",
+      "required_patterns": [
+        "(?im)^###\\s+QCP024\\b",
+        "(?im)^\\*\\*Recommended answer:\\*\\*"
+      ],
+      "forbidden_patterns": []
+    }
+  ],
+  "post_input_ordered_assertions": [],
+  "checkpoint_fixture": {
+    "primary_question_id": "QCP024",
+    "decision_item_id": "D-CP-024",
+    "accepted_answer": "use the declared safe option",
+    "fixture_kind": "Seventh answer confirmation"
+  }
+}
+,
+{
+  "case_id": "DG-025",
+  "title": "Seventh answer without confirmation",
+  "judge_semantic_requirements": [
+    {
+      "id": "checkpoint_contract",
+      "description": "The transcript follows the declared checkpoint, lineage, resume, or refusal behavior without treating a control as a primary question."
+    }
+  ],
+  "execution_priority": "full",
+  "fixture_setup": "Fresh isolated session. Primary Question ID QCP025; decision item D-CP-025; no repository mutation.",
+  "fixtures": [],
+  "desktop_initial_input": "/decision-grill\nStart a bounded checkpoint fixture for D-CP-025. Create OPEN primary question QCP025: decide whether to approve the material Aurora pilot launch-readiness decision. Recommend the safe material option. After its accepted result, show a non-primary Checkpoint control; do not make checkpoint behavior a primary question.",
+  "cli_initial_input": "$decision-grill\nStart a bounded checkpoint fixture for D-CP-025. Create OPEN primary question QCP025: decide whether to approve the material Aurora pilot launch-readiness decision. Recommend the safe material option. After its accepted result, show a non-primary Checkpoint control; do not make checkpoint behavior a primary question.",
+  "ordered_subsequent_inputs": [
+      "Accept QCP025 recommendation exactly: use the declared safe material option."
+  ],
+  "send_condition": "Only after primary question QCP025 is visible with a recommendation.",
+  "expected_behavior": "Seventh answer without confirmation. Record the accepted result before any checkpoint-sensitive output.",
+  "observable_evidence": "QCP025 primary question and a visible ANSWERED ledger event for D-CP-025; no file mutation.",
+  "pass_conditions": [
+    "visible accepted-result ledger event for QCP025",
+    "no product file mutation"
+  ],
+  "fail_conditions": [
+    "missing accepted-result event",
+    "tool or file mutation"
+  ],
+  "blocked_conditions": [
+    "project-level Skill unavailable",
+    "session cannot accept invocation"
+  ],
+  "allowed_tools": [],
+  "forbidden_tools": [
+    "all product-modifying tools"
+  ],
+  "file_mutation_policy": "no file change",
+  "automatic_skill_invocation_policy": "decision-grill only; no automatic other Skill",
+  "required_keywords": [
+    "QCP025",
+    "Recommended answer"
+  ],
+  "required_states": [
+    "ANSWERED"
+  ],
+  "send_condition_requirements": [
+    {
+      "input_index": 1,
+      "mode": "required",
+      "required_patterns": [
+        "(?im)^###\\s+QCP025\\b",
+        "(?im)^\\*\\*Recommended answer:\\*\\*"
+      ],
+      "forbidden_patterns": []
+    }
+  ],
+  "post_input_ordered_assertions": [],
+  "checkpoint_fixture": {
+    "primary_question_id": "QCP025",
+    "decision_item_id": "D-CP-025",
+    "accepted_answer": "use the declared safe option",
+    "fixture_kind": "Seventh answer without confirmation"
+  }
+}
+,
+{
+  "case_id": "DG-026",
+  "title": "Second material revision",
+  "judge_semantic_requirements": [
+    {
+      "id": "checkpoint_contract",
+      "description": "The transcript follows the declared checkpoint, lineage, resume, or refusal behavior without treating a control as a primary question."
+    }
+  ],
+  "execution_priority": "full",
+  "fixture_setup": "Fresh isolated session. Primary Question ID QCP026; decision item D-CP-026; no repository mutation.",
+  "fixtures": [],
+  "desktop_initial_input": "/decision-grill\nStart a bounded checkpoint fixture for D-CP-026. Create OPEN primary question QCP026: decide whether to approve the second material revision to the Aurora pilot scope. Recommend the declared safe option. After an accepted result, show a non-primary checkpoint control and wait for a separate user choice. If the user continues, directly ask the next unresolved material primary question; do not close or summarize the interview.",
+  "cli_initial_input": "$decision-grill\nStart a bounded checkpoint fixture for D-CP-026. Create OPEN primary question QCP026: decide whether to approve the second material revision to the Aurora pilot scope. Recommend the declared safe option. After an accepted result, show a non-primary checkpoint control and wait for a separate user choice. If the user continues, directly ask the next unresolved material primary question; do not close or summarize the interview.",
+  "ordered_subsequent_inputs": [
+      "Accept QCP026 recommendation exactly: do not approve the second material revision to the Aurora pilot scope.",
+    "Continue interview without creating a checkpoint."
+  ],
+  "send_condition": "Only after primary question QCP026 is visible with a recommendation.",
+  "expected_behavior": "Second material revision. Record the accepted result before any checkpoint-sensitive output.",
+  "observable_evidence": "QCP026 primary question and a visible ANSWERED ledger event for D-CP-026; no file mutation.",
+  "pass_conditions": [
+    "visible accepted-result ledger event for QCP026",
+    "no product file mutation"
+  ],
+  "fail_conditions": [
+    "missing accepted-result event",
+    "tool or file mutation"
+  ],
+  "blocked_conditions": [
+    "project-level Skill unavailable",
+    "session cannot accept invocation"
+  ],
+  "allowed_tools": [],
+  "forbidden_tools": [
+    "all product-modifying tools"
+  ],
+  "file_mutation_policy": "no file change",
+  "automatic_skill_invocation_policy": "decision-grill only; no automatic other Skill",
+  "required_keywords": [
+    "QCP026",
+    "Recommended answer"
+  ],
+  "required_states": [
+    "ANSWERED"
+  ],
+  "send_condition_requirements": [
+    {
+      "input_index": 1,
+      "mode": "required",
+        "required_patterns": [
+          "(?im)^###\\s+QCP026\\b",
+          "(?im)^\\*\\*Recommended answer:\\*\\*"
+        ],
+        "forbidden_patterns": []
+      },
+      {
+        "input_index": 2,
+        "mode": "required",
+        "required_patterns": ["(?im)^##\\s+Checkpoint control\\b", "(?im)^\\s*-\\s+Continue interview\\b"],
+        "forbidden_patterns": []
+      }
+  ],
+  "post_input_ordered_assertions": [],
+  "checkpoint_fixture": {
+    "primary_question_id": "QCP026",
+    "decision_item_id": "D-CP-026",
+    "accepted_answer": "use the declared safe option",
+    "fixture_kind": "Second material revision"
+  }
+}
+,
+{
+  "case_id": "DG-027",
+  "title": "Replacement Question lineage",
+  "judge_semantic_requirements": [
+    {
+      "id": "checkpoint_contract",
+      "description": "The transcript follows the declared checkpoint, lineage, resume, or refusal behavior without treating a control as a primary question."
+    }
+  ],
+  "execution_priority": "full",
+  "fixture_setup": "Fresh isolated session. Primary Question ID QCP027; decision item D-CP-027; no repository mutation.",
+  "fixtures": [],
+  "desktop_initial_input": "/decision-grill\nStart a bounded checkpoint fixture for D-CP-027. Create OPEN primary question QCP027: decide whether to approve the material Aurora pilot mitigation replacement. Recommend the safe material option. After its accepted result, show a non-primary Checkpoint control; do not make checkpoint behavior a primary question.",
+  "cli_initial_input": "$decision-grill\nStart a bounded checkpoint fixture for D-CP-027. Create OPEN primary question QCP027: decide whether to approve the material Aurora pilot mitigation replacement. Recommend the safe material option. After its accepted result, show a non-primary Checkpoint control; do not make checkpoint behavior a primary question.",
+  "ordered_subsequent_inputs": [
+      "Accept QCP027 recommendation exactly: use the declared safe material option."
+  ],
+  "send_condition": "Only after primary question QCP027 is visible with a recommendation.",
+  "expected_behavior": "Replacement Question lineage. Record the accepted result before any checkpoint-sensitive output.",
+  "observable_evidence": "QCP027 primary question and a visible ANSWERED ledger event for D-CP-027; no file mutation.",
+  "pass_conditions": [
+    "visible accepted-result ledger event for QCP027",
+    "no product file mutation"
+  ],
+  "fail_conditions": [
+    "missing accepted-result event",
+    "tool or file mutation"
+  ],
+  "blocked_conditions": [
+    "project-level Skill unavailable",
+    "session cannot accept invocation"
+  ],
+  "allowed_tools": [],
+  "forbidden_tools": [
+    "all product-modifying tools"
+  ],
+  "file_mutation_policy": "no file change",
+  "automatic_skill_invocation_policy": "decision-grill only; no automatic other Skill",
+  "required_keywords": [
+    "QCP027",
+    "Recommended answer"
+  ],
+  "required_states": [
+    "ANSWERED"
+  ],
+  "send_condition_requirements": [
+    {
+      "input_index": 1,
+      "mode": "required",
+      "required_patterns": [
+        "(?im)^###\\s+QCP027\\b",
+        "(?im)^\\*\\*Recommended answer:\\*\\*"
+      ],
+      "forbidden_patterns": []
+    }
+  ],
+  "post_input_ordered_assertions": [],
+  "checkpoint_fixture": {
+    "primary_question_id": "QCP027",
+    "decision_item_id": "D-CP-027",
+    "accepted_answer": "use the declared safe option",
+    "fixture_kind": "Replacement Question lineage"
+  }
+}
+,
+{
+  "case_id": "DG-028",
+  "title": "Non-material clarification",
+  "judge_semantic_requirements": [
+    {
+      "id": "checkpoint_contract",
+      "description": "The transcript follows the declared checkpoint, lineage, resume, or refusal behavior without treating a control as a primary question."
+    }
+  ],
+  "execution_priority": "full",
+  "fixture_setup": "Fresh isolated session. Primary Question ID QCP028; decision item D-CP-028; no repository mutation.",
+  "fixtures": [],
+  "desktop_initial_input": "/decision-grill\nStart a bounded checkpoint fixture for D-CP-028. Create OPEN primary question QCP028: decide whether to approve the material financial commitment for the Aurora pilot. Recommend the declared safe option. After an accepted result, show a non-primary checkpoint control and wait for a separate user choice. Ask QCP028 only.",
+  "cli_initial_input": "$decision-grill\nStart a bounded checkpoint fixture for D-CP-028. Create OPEN primary question QCP028: decide whether to approve the material financial commitment for the Aurora pilot. Recommend the declared safe option. After an accepted result, show a non-primary checkpoint control and wait for a separate user choice. Ask QCP028 only.",
+  "ordered_subsequent_inputs": [
+    "Accept QCP028 recommendation exactly: do not approve the material financial commitment.",
+    "Continue interview without creating a checkpoint."
+  ],
+  "send_condition": "Only after primary question QCP028 is visible with a recommendation.",
+  "expected_behavior": "Non-material clarification. Record the accepted result before any checkpoint-sensitive output.",
+  "observable_evidence": "QCP028 primary question and a visible ANSWERED ledger event for D-CP-028; no file mutation.",
+  "pass_conditions": [
+    "visible accepted-result ledger event for QCP028",
+    "no product file mutation"
+  ],
+  "fail_conditions": [
+    "missing accepted-result event",
+    "tool or file mutation"
+  ],
+  "blocked_conditions": [
+    "project-level Skill unavailable",
+    "session cannot accept invocation"
+  ],
+  "allowed_tools": [],
+  "forbidden_tools": [
+    "all product-modifying tools"
+  ],
+  "file_mutation_policy": "no file change",
+  "automatic_skill_invocation_policy": "decision-grill only; no automatic other Skill",
+  "required_keywords": [
+    "QCP028",
+    "Recommended answer"
+  ],
+  "required_states": [
+    "ANSWERED"
+  ],
+  "send_condition_requirements": [
+    {
+      "input_index": 1,
+      "mode": "required",
+        "required_patterns": [
+          "(?im)^###\\s+QCP028\\b",
+          "(?im)^\\*\\*Recommended answer:\\*\\*"
+        ],
+        "forbidden_patterns": []
+      },
+      {
+        "input_index": 2,
+        "mode": "required",
+        "required_patterns": ["(?im)^##\\s+Checkpoint control\\b", "(?im)^\\s*-\\s+Continue interview\\b"],
+        "forbidden_patterns": []
+      }
+  ],
+  "post_input_ordered_assertions": [],
+  "checkpoint_fixture": {
+    "primary_question_id": "QCP028",
+    "decision_item_id": "D-CP-028",
+    "accepted_answer": "use the declared safe option",
+    "fixture_kind": "Non-material clarification"
+  }
+}
+,
+{
+  "case_id": "DG-029",
+  "title": "Financial commitment trigger",
+  "judge_semantic_requirements": [
+    {
+      "id": "checkpoint_contract",
+      "description": "The transcript follows the declared checkpoint, lineage, resume, or refusal behavior without treating a control as a primary question."
+    }
+  ],
+  "execution_priority": "full",
+  "fixture_setup": "Fresh isolated session. Primary Question ID QCP029; decision item D-CP-029; no repository mutation.",
+  "fixtures": [],
+  "desktop_initial_input": "/decision-grill\nStart a bounded checkpoint fixture for D-CP-029. Create OPEN primary question QCP029: decide the declared checkpoint behavior. Recommend the declared safe option. Maintain the checkpoint, baseline, lineage, and refusal rules. Ask QCP029 only.",
+    "cli_initial_input": "$decision-grill\nStart a bounded checkpoint fixture for D-CP-029. Create OPEN primary question QCP029: decide whether to approve the declared material financial commitment for the Aurora pilot. Recommend the declared safe option. Maintain the checkpoint, baseline, lineage, and refusal rules. Ask QCP029 only.",
+  "ordered_subsequent_inputs": [
+      "Accept QCP029 recommendation exactly: approve the declared financial commitment and create a checkpoint."
+  ],
+  "send_condition": "Only after primary question QCP029 is visible with a recommendation.",
+  "expected_behavior": "Financial commitment trigger. Record the accepted result before any checkpoint-sensitive output.",
+  "observable_evidence": "QCP029 primary question and a visible ANSWERED ledger event for D-CP-029; no file mutation.",
+    "pass_conditions": [
+      "visible accepted-result ledger event for the current primary question",
+    "no product file mutation"
+  ],
+  "fail_conditions": [
+    "missing accepted-result event",
+    "tool or file mutation"
+  ],
+  "blocked_conditions": [
+    "project-level Skill unavailable",
+    "session cannot accept invocation"
+  ],
+  "allowed_tools": [],
+  "forbidden_tools": [
+    "all product-modifying tools"
+  ],
+  "file_mutation_policy": "no file change",
+  "automatic_skill_invocation_policy": "decision-grill only; no automatic other Skill",
+  "required_keywords": [
+    "QCP029",
+    "Recommended answer"
+  ],
+  "required_states": [
+    "ANSWERED"
+  ],
+  "send_condition_requirements": [
+    {
+      "input_index": 1,
+      "mode": "required",
+      "required_patterns": [
+        "(?im)^###\\s+QCP029\\b",
+        "(?im)^\\*\\*Recommended answer:\\*\\*"
+      ],
+      "forbidden_patterns": []
+    }
+  ],
+  "post_input_ordered_assertions": [],
+  "checkpoint_fixture": {
+    "primary_question_id": "QCP029",
+    "decision_item_id": "D-CP-029",
+    "accepted_answer": "use the declared safe option",
+    "fixture_kind": "Financial commitment trigger"
+  }
+}
+,
+{
+  "case_id": "DG-030",
+  "title": "Equity governance trigger",
+  "judge_semantic_requirements": [
+    {
+      "id": "checkpoint_contract",
+      "description": "The transcript follows the declared checkpoint, lineage, resume, or refusal behavior without treating a control as a primary question."
+    }
+  ],
+  "execution_priority": "full",
+  "fixture_setup": "Fresh isolated session. Primary Question ID QCP030; decision item D-CP-030; no repository mutation.",
+  "fixtures": [],
+  "desktop_initial_input": "/decision-grill\nStart a bounded checkpoint fixture for D-CP-030. Create OPEN primary question QCP030: decide the declared checkpoint behavior. Recommend the declared safe option. Maintain the checkpoint, baseline, lineage, and refusal rules. Ask QCP030 only.",
+    "cli_initial_input": "$decision-grill\nStart a bounded checkpoint fixture for D-CP-030. Create OPEN primary question QCP030: decide whether to approve the declared equity or governance-right commitment for the Aurora pilot. Recommend the declared safe option. Maintain the checkpoint, baseline, lineage, and refusal rules. Ask QCP030 only.",
+  "ordered_subsequent_inputs": [
+      "Accept QCP030 recommendation exactly: approve the declared equity or governance-right commitment and create a checkpoint."
+  ],
+  "send_condition": "Only after primary question QCP030 is visible with a recommendation.",
+  "expected_behavior": "Equity governance trigger. Record the accepted result before any checkpoint-sensitive output.",
+  "observable_evidence": "QCP030 primary question and a visible ANSWERED ledger event for D-CP-030; no file mutation.",
+    "pass_conditions": [
+      "visible accepted-result ledger event for the current primary question",
+    "no product file mutation"
+  ],
+  "fail_conditions": [
+    "missing accepted-result event",
+    "tool or file mutation"
+  ],
+  "blocked_conditions": [
+    "project-level Skill unavailable",
+    "session cannot accept invocation"
+  ],
+  "allowed_tools": [],
+  "forbidden_tools": [
+    "all product-modifying tools"
+  ],
+  "file_mutation_policy": "no file change",
+  "automatic_skill_invocation_policy": "decision-grill only; no automatic other Skill",
+  "required_keywords": [
+    "QCP030",
+    "Recommended answer"
+  ],
+  "required_states": [
+    "ANSWERED"
+  ],
+  "send_condition_requirements": [
+    {
+      "input_index": 1,
+      "mode": "required",
+      "required_patterns": [
+        "(?im)^###\\s+QCP030\\b",
+        "(?im)^\\*\\*Recommended answer:\\*\\*"
+      ],
+      "forbidden_patterns": []
+    }
+  ],
+  "post_input_ordered_assertions": [],
+  "checkpoint_fixture": {
+    "primary_question_id": "QCP030",
+    "decision_item_id": "D-CP-030",
+    "accepted_answer": "use the declared safe option",
+    "fixture_kind": "Equity governance trigger"
+  }
+}
+,
+{
+  "case_id": "DG-031",
+  "title": "Material obligation variants",
+  "judge_semantic_requirements": [
+    {
+      "id": "checkpoint_contract",
+      "description": "The transcript follows the declared checkpoint, lineage, resume, or refusal behavior without treating a control as a primary question."
+    }
+  ],
+  "execution_priority": "full",
+  "fixture_setup": "Fresh isolated session. Primary Question ID QCP031; decision item D-CP-031; no repository mutation.",
+  "fixtures": [],
+  "desktop_initial_input": "/decision-grill\nStart a bounded checkpoint fixture for D-CP-031. Create OPEN primary question QCP031: decide the declared checkpoint behavior. Recommend the declared safe option. Maintain the checkpoint, baseline, lineage, and refusal rules. Ask QCP031 only.",
+    "cli_initial_input": "$decision-grill\nStart a bounded checkpoint fixture for D-CP-031. Create OPEN primary question QCP031: decide whether to accept the declared material legal or contractual obligation for the Aurora pilot. Recommend the declared safe option. Maintain the checkpoint, baseline, lineage, and refusal rules. Ask QCP031 only.",
+  "ordered_subsequent_inputs": [
+      "Accept QCP031 recommendation exactly: do not accept the declared material obligation."
+  ],
+  "send_condition": "Only after primary question QCP031 is visible with a recommendation.",
+  "expected_behavior": "Material obligation variants. Record the accepted result before any checkpoint-sensitive output.",
+  "observable_evidence": "QCP031 primary question and a visible ANSWERED ledger event for D-CP-031; no file mutation.",
+    "pass_conditions": [
+      "visible accepted-result ledger event for the current primary question",
+    "no product file mutation"
+  ],
+  "fail_conditions": [
+    "missing accepted-result event",
+    "tool or file mutation"
+  ],
+  "blocked_conditions": [
+    "project-level Skill unavailable",
+    "session cannot accept invocation"
+  ],
+  "allowed_tools": [],
+  "forbidden_tools": [
+    "all product-modifying tools"
+  ],
+  "file_mutation_policy": "no file change",
+  "automatic_skill_invocation_policy": "decision-grill only; no automatic other Skill",
+  "required_keywords": [
+    "QCP031",
+    "Recommended answer"
+  ],
+  "required_states": [
+    "ANSWERED"
+  ],
+  "send_condition_requirements": [
+    {
+      "input_index": 1,
+      "mode": "required",
+      "required_patterns": [
+        "(?im)^###\\s+QCP031\\b",
+        "(?im)^\\*\\*Recommended answer:\\*\\*"
+      ],
+      "forbidden_patterns": []
+    }
+  ],
+  "post_input_ordered_assertions": [],
+  "checkpoint_fixture": {
+    "primary_question_id": "QCP031",
+    "decision_item_id": "D-CP-031",
+    "accepted_answer": "use the declared safe option",
+    "fixture_kind": "Material obligation variants"
+  }
+}
+,
+{
+  "case_id": "DG-032",
+  "title": "External document dependency",
+  "judge_semantic_requirements": [
+    {
+      "id": "checkpoint_contract",
+      "description": "The transcript follows the declared checkpoint, lineage, resume, or refusal behavior without treating a control as a primary question."
+    }
+  ],
+  "execution_priority": "full",
+  "fixture_setup": "Fresh isolated session. Primary Question ID QCP032; decision item D-CP-032; no repository mutation.",
+  "fixtures": [],
+  "desktop_initial_input": "/decision-grill\nStart a bounded checkpoint fixture for D-CP-032. Create OPEN primary question QCP032: decide the declared checkpoint behavior. Recommend the declared safe option. Maintain the checkpoint, baseline, lineage, and refusal rules. Ask QCP032 only.",
+    "cli_initial_input": "$decision-grill\nStart a bounded checkpoint fixture for D-CP-032. Create OPEN primary question QCP032: decide whether the declared external-document dependency must be preserved before the Aurora pilot can continue. Recommend the declared safe option. Maintain the checkpoint, baseline, lineage, and refusal rules. Ask QCP032 only.",
+  "ordered_subsequent_inputs": [
+      "Accept QCP032 recommendation exactly: record the declared external-document dependency and create a checkpoint."
+  ],
+  "send_condition": "Only after primary question QCP032 is visible with a recommendation.",
+  "expected_behavior": "External document dependency. Record the accepted result before any checkpoint-sensitive output.",
+  "observable_evidence": "QCP032 primary question and a visible ANSWERED ledger event for D-CP-032; no file mutation.",
+    "pass_conditions": [
+      "visible accepted-result ledger event for the current primary question",
+    "no product file mutation"
+  ],
+  "fail_conditions": [
+    "missing accepted-result event",
+    "tool or file mutation"
+  ],
+  "blocked_conditions": [
+    "project-level Skill unavailable",
+    "session cannot accept invocation"
+  ],
+  "allowed_tools": [],
+  "forbidden_tools": [
+    "all product-modifying tools"
+  ],
+  "file_mutation_policy": "no file change",
+  "automatic_skill_invocation_policy": "decision-grill only; no automatic other Skill",
+  "required_keywords": [
+    "QCP032",
+    "Recommended answer"
+  ],
+  "required_states": [
+    "ANSWERED"
+  ],
+  "send_condition_requirements": [
+    {
+      "input_index": 1,
+      "mode": "required",
+      "required_patterns": [
+        "(?im)^###\\s+QCP032\\b",
+        "(?im)^\\*\\*Recommended answer:\\*\\*"
+      ],
+      "forbidden_patterns": []
+    }
+  ],
+  "post_input_ordered_assertions": [],
+  "checkpoint_fixture": {
+    "primary_question_id": "QCP032",
+    "decision_item_id": "D-CP-032",
+    "accepted_answer": "use the declared safe option",
+    "fixture_kind": "External document dependency"
+  }
+}
+,
+{
+  "case_id": "DG-033",
+  "title": "Environment switch trigger",
+  "judge_semantic_requirements": [
+    {
+      "id": "checkpoint_contract",
+      "description": "The transcript follows the declared checkpoint, lineage, resume, or refusal behavior without treating a control as a primary question."
+    }
+  ],
+  "execution_priority": "full",
+  "fixture_setup": "Fresh isolated session. Primary Question ID QCP033; decision item D-CP-033; no repository mutation.",
+  "fixtures": [],
+  "desktop_initial_input": "/decision-grill\nStart a bounded checkpoint fixture for D-CP-033. Create OPEN primary question QCP033: decide whether to authorize the imminent Aurora pilot environment switch. Recommend the declared safe option. After an accepted result, show a non-primary checkpoint control and wait for a separate user choice. Ask QCP033 only.",
+  "cli_initial_input": "$decision-grill\nStart a bounded checkpoint fixture for D-CP-033. Create OPEN primary question QCP033: decide whether to authorize the imminent Aurora pilot environment switch. Recommend the declared safe option. After an accepted result, show a non-primary checkpoint control and wait for a separate user choice. Ask QCP033 only.",
+  "ordered_subsequent_inputs": [
+    "Accept QCP033 recommendation exactly: do not authorize the imminent Aurora pilot environment switch.",
+    "Continue interview without creating a checkpoint."
+  ],
+  "send_condition": "Only after primary question QCP033 is visible with a recommendation.",
+  "expected_behavior": "Environment switch trigger. Record the accepted result before any checkpoint-sensitive output.",
+  "observable_evidence": "QCP033 primary question and a visible ANSWERED ledger event for D-CP-033; no file mutation.",
+  "pass_conditions": [
+    "visible accepted-result ledger event for QCP033",
+    "no product file mutation"
+  ],
+  "fail_conditions": [
+    "missing accepted-result event",
+    "tool or file mutation"
+  ],
+  "blocked_conditions": [
+    "project-level Skill unavailable",
+    "session cannot accept invocation"
+  ],
+  "allowed_tools": [],
+  "forbidden_tools": [
+    "all product-modifying tools"
+  ],
+  "file_mutation_policy": "no file change",
+  "automatic_skill_invocation_policy": "decision-grill only; no automatic other Skill",
+  "required_keywords": [
+    "QCP033",
+    "Recommended answer"
+  ],
+  "required_states": [
+    "ANSWERED"
+  ],
+  "send_condition_requirements": [
+    {
+      "input_index": 1,
+      "mode": "required",
+        "required_patterns": [
+          "(?im)^###\\s+QCP033\\b",
+          "(?im)^\\*\\*Recommended answer:\\*\\*"
+        ],
+        "forbidden_patterns": []
+      },
+      {
+        "input_index": 2,
+        "mode": "required",
+        "required_patterns": ["(?im)^##\\s+Checkpoint control\\b", "(?im)^\\s*-\\s+Continue interview\\b"],
+        "forbidden_patterns": []
+      }
+  ],
+  "post_input_ordered_assertions": [],
+  "checkpoint_fixture": {
+    "primary_question_id": "QCP033",
+    "decision_item_id": "D-CP-033",
+    "accepted_answer": "use the declared safe option",
+    "fixture_kind": "Environment switch trigger"
+  }
+}
+,
+{
+  "case_id": "DG-034",
+  "title": "Anti-spam escalation",
+  "judge_semantic_requirements": [
+    {
+      "id": "checkpoint_contract",
+      "description": "The transcript follows the declared checkpoint, lineage, resume, or refusal behavior without treating a control as a primary question."
+    }
+  ],
+  "execution_priority": "full",
+  "fixture_setup": "Fresh isolated session. Primary Question ID QCP034; decision item D-CP-034; no repository mutation.",
+  "fixtures": [],
+  "desktop_initial_input": "/decision-grill\nStart a bounded checkpoint fixture for D-CP-034. Create OPEN primary question QCP034: decide whether to authorize the material anti-spam escalation for the Aurora pilot. Recommend the declared safe option. After its accepted result, show a non-primary Checkpoint control and wait for a separate user choice. Ask QCP034 only.",
+  "cli_initial_input": "$decision-grill\nStart a bounded checkpoint fixture for D-CP-034. Create OPEN primary question QCP034: decide whether to authorize the material anti-spam escalation for the Aurora pilot. Recommend the declared safe option. After its accepted result, show a non-primary Checkpoint control and wait for a separate user choice. Ask QCP034 only.",
+  "ordered_subsequent_inputs": [
+      "Accept QCP034 recommendation exactly: use the declared safe material option."
+  ],
+  "send_condition": "Only after primary question QCP034 is visible with a recommendation.",
+  "expected_behavior": "Anti-spam escalation. Record the accepted result before any checkpoint-sensitive output.",
+  "observable_evidence": "QCP034 primary question and a visible ANSWERED ledger event for D-CP-034; no file mutation.",
+  "pass_conditions": [
+    "visible accepted-result ledger event for QCP034",
+    "no product file mutation"
+  ],
+  "fail_conditions": [
+    "missing accepted-result event",
+    "tool or file mutation"
+  ],
+  "blocked_conditions": [
+    "project-level Skill unavailable",
+    "session cannot accept invocation"
+  ],
+  "allowed_tools": [],
+  "forbidden_tools": [
+    "all product-modifying tools"
+  ],
+  "file_mutation_policy": "no file change",
+  "automatic_skill_invocation_policy": "decision-grill only; no automatic other Skill",
+  "required_keywords": [
+    "QCP034",
+    "Recommended answer"
+  ],
+  "required_states": [
+    "ANSWERED"
+  ],
+  "send_condition_requirements": [
+    {
+      "input_index": 1,
+      "mode": "required",
+      "required_patterns": [
+        "(?im)^###\\s+QCP034\\b",
+        "(?im)^\\*\\*Recommended answer:\\*\\*"
+      ],
+      "forbidden_patterns": []
+    }
+  ],
+  "post_input_ordered_assertions": [],
+  "checkpoint_fixture": {
+    "primary_question_id": "QCP034",
+    "decision_item_id": "D-CP-034",
+    "accepted_answer": "use the declared safe option",
+    "fixture_kind": "Anti-spam escalation"
+  }
+}
+,
+{
+  "case_id": "DG-035",
+  "title": "Non-counted state semantics",
+  "judge_semantic_requirements": [
+    {
+      "id": "checkpoint_contract",
+      "description": "The transcript follows the declared checkpoint, lineage, resume, or refusal behavior without treating a control as a primary question."
+    }
+  ],
+  "execution_priority": "full",
+  "fixture_setup": "Fresh isolated session. Primary Question ID QCP035; decision item D-CP-035; no repository mutation.",
+  "fixtures": [],
+  "desktop_initial_input": "/decision-grill\nStart a bounded checkpoint fixture for D-CP-035. Create OPEN primary question QCP035: decide whether to accept the stated material contractual obligation for the Aurora pilot. Recommend the declared safe option. After an accepted result, show a non-primary checkpoint control and wait for a separate user choice. Ask QCP035 only.",
+  "cli_initial_input": "$decision-grill\nStart a bounded checkpoint fixture for D-CP-035. Create OPEN primary question QCP035: decide whether to accept the stated material contractual obligation for the Aurora pilot. Recommend the declared safe option. After an accepted result, show a non-primary checkpoint control and wait for a separate user choice. Ask QCP035 only.",
+  "ordered_subsequent_inputs": [
+    "Accept QCP035 recommendation exactly: do not accept the stated material contractual obligation.",
+    "Continue interview without creating a checkpoint."
+  ],
+  "send_condition": "Only after primary question QCP035 is visible with a recommendation.",
+  "expected_behavior": "Non-counted state semantics. Record the accepted result before any checkpoint-sensitive output.",
+  "observable_evidence": "QCP035 primary question and a visible ANSWERED ledger event for D-CP-035; no file mutation.",
+  "pass_conditions": [
+    "visible accepted-result ledger event for QCP035",
+    "no product file mutation"
+  ],
+  "fail_conditions": [
+    "missing accepted-result event",
+    "tool or file mutation"
+  ],
+  "blocked_conditions": [
+    "project-level Skill unavailable",
+    "session cannot accept invocation"
+  ],
+  "allowed_tools": [],
+  "forbidden_tools": [
+    "all product-modifying tools"
+  ],
+  "file_mutation_policy": "no file change",
+  "automatic_skill_invocation_policy": "decision-grill only; no automatic other Skill",
+  "required_keywords": [
+    "QCP035",
+    "Recommended answer"
+  ],
+  "required_states": [
+    "ANSWERED"
+  ],
+  "send_condition_requirements": [
+    {
+      "input_index": 1,
+      "mode": "required",
+        "required_patterns": [
+          "(?im)^###\\s+QCP035\\b",
+          "(?im)^\\*\\*Recommended answer:\\*\\*"
+        ],
+        "forbidden_patterns": []
+      },
+      {
+        "input_index": 2,
+        "mode": "required",
+        "required_patterns": ["(?im)^##\\s+Checkpoint control\\b", "(?im)^\\s*-\\s+Continue interview\\b"],
+        "forbidden_patterns": []
+      }
+  ],
+  "post_input_ordered_assertions": [],
+  "checkpoint_fixture": {
+    "primary_question_id": "QCP035",
+    "decision_item_id": "D-CP-035",
+    "accepted_answer": "use the declared safe option",
+    "fixture_kind": "Non-counted state semantics"
+  }
+}
+,
+{
+  "case_id": "DG-036",
+  "title": "Captured checkpoint resume",
+  "judge_semantic_requirements": [
+    {
+      "id": "checkpoint_contract",
+      "description": "The transcript follows the declared checkpoint, lineage, resume, or refusal behavior without treating a control as a primary question."
+    }
+  ],
+  "execution_priority": "full",
+  "fixture_setup": "Fresh isolated session. Primary Question ID QCP036; decision item D-CP-036; no repository mutation.",
+  "fixtures": [],
+  "desktop_initial_input": "/decision-grill\nStart a bounded checkpoint fixture for D-CP-036. Create OPEN primary question QCP036: decide whether to authorize the material Aurora pilot anti-spam escalation. Recommend the declared safe option. After an accepted result, show a non-primary checkpoint control and wait for a separate user choice. Ask QCP036 only.",
+  "cli_initial_input": "$decision-grill\nStart a bounded checkpoint fixture for D-CP-036. Create OPEN primary question QCP036: decide whether to authorize the material Aurora pilot anti-spam escalation. Recommend the declared safe option. After an accepted result, show a non-primary checkpoint control and wait for a separate user choice. Ask QCP036 only.",
+  "ordered_subsequent_inputs": [
+    "Accept QCP036 recommendation exactly: do not authorize the material Aurora pilot anti-spam escalation.",
+    "Continue interview without creating a checkpoint."
+  ],
+  "send_condition": "Only after primary question QCP036 is visible with a recommendation.",
+  "expected_behavior": "Captured checkpoint resume. Record the accepted result before any checkpoint-sensitive output.",
+  "observable_evidence": "QCP036 primary question and a visible ANSWERED ledger event for D-CP-036; no file mutation.",
+  "pass_conditions": [
+    "visible accepted-result ledger event for QCP036",
+    "no product file mutation"
+  ],
+  "fail_conditions": [
+    "missing accepted-result event",
+    "tool or file mutation"
+  ],
+  "blocked_conditions": [
+    "project-level Skill unavailable",
+    "session cannot accept invocation"
+  ],
+  "allowed_tools": [],
+  "forbidden_tools": [
+    "all product-modifying tools"
+  ],
+  "file_mutation_policy": "no file change",
+  "automatic_skill_invocation_policy": "decision-grill only; no automatic other Skill",
+  "required_keywords": [
+    "QCP036",
+    "Recommended answer"
+  ],
+  "required_states": [
+    "ANSWERED"
+  ],
+  "send_condition_requirements": [
+    {
+      "input_index": 1,
+      "mode": "required",
+      "required_patterns": [
+        "(?im)^###\\s+QCP036\\b",
+        "(?im)^\\*\\*Recommended answer:\\*\\*"
+      ],
+      "forbidden_patterns": []
+    },
+    {
+      "input_index": 2,
+      "mode": "required",
+      "required_patterns": [
+        "(?im)^##\\s+Checkpoint control\\b",
+        "(?im)^\\s*-\\s+Continue interview\\b"
+      ],
+      "forbidden_patterns": []
+    }
+  ],
+  "post_input_ordered_assertions": [],
+  "checkpoint_fixture": {
+    "primary_question_id": "QCP036",
+    "decision_item_id": "D-CP-036",
+    "accepted_answer": "use the declared safe option",
+    "fixture_kind": "Captured checkpoint resume"
+  }
+}
+,
+{
+  "case_id": "DG-037",
+  "title": "Baseline reopen resume",
+  "judge_semantic_requirements": [
+    {
+      "id": "checkpoint_contract",
+      "description": "The transcript follows the declared checkpoint, lineage, resume, or refusal behavior without treating a control as a primary question."
+    }
+  ],
+  "execution_priority": "full",
+  "fixture_setup": "Fresh isolated session. Primary Question ID QCP037; decision item D-CP-037; no repository mutation.",
+  "fixtures": [],
+  "desktop_initial_input": "/decision-grill\nStart a bounded checkpoint fixture for D-CP-037. Create OPEN primary question QCP037: decide whether to reopen the material Aurora pilot baseline. Recommend the safe material option. After its accepted result, show a non-primary Checkpoint control; do not make checkpoint behavior a primary question.",
+  "cli_initial_input": "$decision-grill\nStart a bounded checkpoint fixture for D-CP-037. Create OPEN primary question QCP037: decide whether to reopen the material Aurora pilot baseline. Recommend the safe material option. After its accepted result, show a non-primary Checkpoint control; do not make checkpoint behavior a primary question.",
+  "ordered_subsequent_inputs": [
+      "Accept QCP037 recommendation exactly: use the declared safe material option."
+  ],
+  "send_condition": "Only after primary question QCP037 is visible with a recommendation.",
+  "expected_behavior": "Baseline reopen resume. Record the accepted result before any checkpoint-sensitive output.",
+  "observable_evidence": "QCP037 primary question and a visible ANSWERED ledger event for D-CP-037; no file mutation.",
+  "pass_conditions": [
+    "visible accepted-result ledger event for QCP037",
+    "no product file mutation"
+  ],
+  "fail_conditions": [
+    "missing accepted-result event",
+    "tool or file mutation"
+  ],
+  "blocked_conditions": [
+    "project-level Skill unavailable",
+    "session cannot accept invocation"
+  ],
+  "allowed_tools": [],
+  "forbidden_tools": [
+    "all product-modifying tools"
+  ],
+  "file_mutation_policy": "no file change",
+  "automatic_skill_invocation_policy": "decision-grill only; no automatic other Skill",
+  "required_keywords": [
+    "QCP037",
+    "Recommended answer"
+  ],
+  "required_states": [
+    "ANSWERED"
+  ],
+  "send_condition_requirements": [
+    {
+      "input_index": 1,
+      "mode": "required",
+      "required_patterns": [
+        "(?im)^###\\s+QCP037\\b",
+        "(?im)^\\*\\*Recommended answer:\\*\\*"
+      ],
+      "forbidden_patterns": []
+    }
+  ],
+  "post_input_ordered_assertions": [],
+  "checkpoint_fixture": {
+    "primary_question_id": "QCP037",
+    "decision_item_id": "D-CP-037",
+    "accepted_answer": "use the declared safe option",
+    "fixture_kind": "Baseline reopen resume"
+  }
+}
+,
+{
+  "case_id": "DG-038",
+  "title": "Refusal at offer and resume",
+  "judge_semantic_requirements": [
+    {
+      "id": "checkpoint_contract",
+      "description": "The transcript follows the declared checkpoint, lineage, resume, or refusal behavior without treating a control as a primary question."
+    }
+  ],
+  "execution_priority": "full",
+  "fixture_setup": "Fresh isolated session. Primary Question ID QCP038; decision item D-CP-038; no repository mutation.",
+  "fixtures": [],
+  "desktop_initial_input": "/decision-grill\nStart a bounded checkpoint fixture for D-CP-038. Create OPEN primary question QCP038: decide whether to accept the stated material guarantee obligation for the Aurora pilot. Recommend the declared safe option. After an accepted result, show a non-primary checkpoint control and wait for a separate user choice. Ask QCP038 only.",
+  "cli_initial_input": "$decision-grill\nStart a bounded checkpoint fixture for D-CP-038. Create OPEN primary question QCP038: decide whether to accept the stated material guarantee obligation for the Aurora pilot. Recommend the declared safe option. After an accepted result, show a non-primary checkpoint control and wait for a separate user choice. Ask QCP038 only.",
+  "ordered_subsequent_inputs": [
+    "Accept QCP038 recommendation exactly: accept the stated material guarantee obligation.",
+    "Continue interview without creating a checkpoint."
+  ],
+  "send_condition": "Only after primary question QCP038 is visible with a recommendation.",
+  "expected_behavior": "Refusal at offer and resume. Record the accepted result before any checkpoint-sensitive output.",
+  "observable_evidence": "QCP038 primary question and a visible ANSWERED ledger event for D-CP-038; no file mutation.",
+  "pass_conditions": [
+    "visible accepted-result ledger event for QCP038",
+    "no product file mutation"
+  ],
+  "fail_conditions": [
+    "missing accepted-result event",
+    "tool or file mutation"
+  ],
+  "blocked_conditions": [
+    "project-level Skill unavailable",
+    "session cannot accept invocation"
+  ],
+  "allowed_tools": [],
+  "forbidden_tools": [
+    "all product-modifying tools"
+  ],
+  "file_mutation_policy": "no file change",
+  "automatic_skill_invocation_policy": "decision-grill only; no automatic other Skill",
+  "required_keywords": [
+    "QCP038",
+    "Recommended answer"
+  ],
+  "required_states": [
+    "ANSWERED"
+  ],
+  "send_condition_requirements": [
+    {
+      "input_index": 1,
+      "mode": "required",
+        "required_patterns": [
+          "(?im)^###\\s+QCP038\\b",
+          "(?im)^\\*\\*Recommended answer:\\*\\*"
+        ],
+        "forbidden_patterns": []
+      },
+      {
+        "input_index": 2,
+        "mode": "required",
+        "required_patterns": ["(?im)^##\\s+Checkpoint control\\b", "(?im)^\\s*-\\s+Continue interview\\b"],
+        "forbidden_patterns": []
+      }
+  ],
+  "post_input_ordered_assertions": [],
+  "checkpoint_fixture": {
+    "primary_question_id": "QCP038",
+    "decision_item_id": "D-CP-038",
+    "accepted_answer": "use the declared safe option",
+    "fixture_kind": "Refusal at offer and resume"
+  }
+}
+,
+{
+  "case_id": "DG-039",
+  "title": "Cross-resume revision lineage",
+  "judge_semantic_requirements": [
+    {
+      "id": "checkpoint_contract",
+      "description": "The transcript follows the declared checkpoint, lineage, resume, or refusal behavior without treating a control as a primary question."
+    }
+  ],
+  "execution_priority": "full",
+  "fixture_setup": "Fresh isolated session. Primary Question ID QCP039; decision item D-CP-039; no repository mutation.",
+  "fixtures": [],
+  "desktop_initial_input": "/decision-grill\nStart a bounded checkpoint fixture for D-CP-039. Create OPEN primary question QCP039: decide whether to approve the material Aurora pilot cross-resume revision. Recommend the safe material option. After its accepted result, show a non-primary Checkpoint control; do not make checkpoint behavior a primary question.",
+  "cli_initial_input": "$decision-grill\nStart a bounded checkpoint fixture for D-CP-039. Create OPEN primary question QCP039: decide whether to approve the material Aurora pilot cross-resume revision. Recommend the safe material option. After its accepted result, show a non-primary Checkpoint control; do not make checkpoint behavior a primary question.",
+  "ordered_subsequent_inputs": [
+      "Accept QCP039 recommendation exactly: use the declared safe material option."
+  ],
+  "send_condition": "Only after primary question QCP039 is visible with a recommendation.",
+  "expected_behavior": "Cross-resume revision lineage. Record the accepted result before any checkpoint-sensitive output.",
+  "observable_evidence": "QCP039 primary question and a visible ANSWERED ledger event for D-CP-039; no file mutation.",
+  "pass_conditions": [
+    "visible accepted-result ledger event for QCP039",
+    "no product file mutation"
+  ],
+  "fail_conditions": [
+    "missing accepted-result event",
+    "tool or file mutation"
+  ],
+  "blocked_conditions": [
+    "project-level Skill unavailable",
+    "session cannot accept invocation"
+  ],
+  "allowed_tools": [],
+  "forbidden_tools": [
+    "all product-modifying tools"
+  ],
+  "file_mutation_policy": "no file change",
+  "automatic_skill_invocation_policy": "decision-grill only; no automatic other Skill",
+  "required_keywords": [
+    "QCP039",
+    "Recommended answer"
+  ],
+  "required_states": [
+    "ANSWERED"
+  ],
+  "send_condition_requirements": [
+    {
+      "input_index": 1,
+      "mode": "required",
+      "required_patterns": [
+        "(?im)^###\\s+QCP039\\b",
+        "(?im)^\\*\\*Recommended answer:\\*\\*"
+      ],
+      "forbidden_patterns": []
+    }
+  ],
+  "post_input_ordered_assertions": [],
+  "checkpoint_fixture": {
+    "primary_question_id": "QCP039",
+    "decision_item_id": "D-CP-039",
+    "accepted_answer": "use the declared safe option",
+    "fixture_kind": "Cross-resume revision lineage"
+  }
+}
+  ],
+  "parameterized_instances": [
+    {"case_instance_id":"DG-029-financial-commitment","case_id":"DG-029","variant":"financial commitment","initial_input":"$decision-grill\nFinancial commitment: approve USD 250,000 for the Aurora pilot. Ask QCP-FIN-001 only; recommend creating a checkpoint after the accepted material financial decision.","subsequent_inputs":["Accept QCP-FIN-001 exactly: approve USD 250,000 and create the checkpoint."],"send_conditions":["QCP-FIN-001 with a recommendation is visible."],"expected_question_id":"QCP-FIN-001","decision_item_id":"D-FIN-001","accepted_answer":"Approve USD 250,000 and create the checkpoint.","expected_ledger_event":"ANSWERED ledger event for QCP-FIN-001","answered_event_turn":1,"revision_expectation":"none","checkpoint_expectation":"offer after accepted financial commitment","summary_expectation":"NOT_CONVERGED checkpoint summary if created","confirmation_expectation":"explicit confirmation only","terminal_status":"NOT_CONVERGED"},
+    {"case_instance_id":"DG-030-equity-commitment","case_id":"DG-030","variant":"equity commitment","initial_input":"$decision-grill\nEquity commitment: approve issuance of 5 percent equity to the Aurora strategic investor. Ask QCP-EQ-001 only; recommend creating a checkpoint after the accepted equity decision.","subsequent_inputs":["Accept QCP-EQ-001 exactly: approve the 5 percent equity issuance and create the checkpoint."],"send_conditions":["QCP-EQ-001 with a recommendation is visible."],"expected_question_id":"QCP-EQ-001","decision_item_id":"D-EQ-001","accepted_answer":"Approve the 5 percent equity issuance and create the checkpoint.","expected_ledger_event":"ANSWERED ledger event for QCP-EQ-001","answered_event_turn":1,"revision_expectation":"none","checkpoint_expectation":"offer after accepted equity commitment","summary_expectation":"NOT_CONVERGED checkpoint summary if created","confirmation_expectation":"explicit confirmation only","terminal_status":"NOT_CONVERGED"},
+    {"case_instance_id":"DG-030-control-right","case_id":"DG-030","variant":"control-right commitment","initial_input":"$decision-grill\nControl-right commitment: grant the Aurora investor a board veto over pilot expansion. Ask QCP-CTRL-001 only; recommend creating a checkpoint after the accepted control-right decision.","subsequent_inputs":["Accept QCP-CTRL-001 exactly: grant the board veto and create the checkpoint."],"send_conditions":["QCP-CTRL-001 with a recommendation is visible."],"expected_question_id":"QCP-CTRL-001","decision_item_id":"D-CTRL-001","accepted_answer":"Grant the board veto and create the checkpoint.","expected_ledger_event":"ANSWERED ledger event for QCP-CTRL-001","answered_event_turn":1,"revision_expectation":"none","checkpoint_expectation":"offer after accepted control-right commitment","summary_expectation":"NOT_CONVERGED checkpoint summary if created","confirmation_expectation":"explicit confirmation only","terminal_status":"NOT_CONVERGED"},
+    {"case_instance_id":"DG-031-legal-liability","case_id":"DG-031","variant":"legal liability","initial_input":"$decision-grill\nLegal liability: accept uncapped liability for Aurora pilot data loss. Ask QCP-LEGAL-001 only; recommend creating a checkpoint after the accepted liability decision.","subsequent_inputs":["Accept QCP-LEGAL-001 exactly: accept uncapped liability and create the checkpoint."],"send_conditions":["QCP-LEGAL-001 with a recommendation is visible."],"expected_question_id":"QCP-LEGAL-001","decision_item_id":"D-LEGAL-001","accepted_answer":"Accept uncapped liability and create the checkpoint.","expected_ledger_event":"ANSWERED ledger event for QCP-LEGAL-001","answered_event_turn":1,"revision_expectation":"none","checkpoint_expectation":"offer after accepted legal liability","summary_expectation":"NOT_CONVERGED checkpoint summary if created","confirmation_expectation":"explicit confirmation only","terminal_status":"NOT_CONVERGED"},
+    {"case_instance_id":"DG-031-guarantee","case_id":"DG-031","variant":"guarantee","initial_input":"$decision-grill\nGuarantee: guarantee 99.9 percent pilot service availability to Aurora. Ask QCP-GUAR-001 only; recommend creating a checkpoint after the accepted guarantee.","subsequent_inputs":["Accept QCP-GUAR-001 exactly: guarantee 99.9 percent availability and create the checkpoint."],"send_conditions":["QCP-GUAR-001 with a recommendation is visible."],"expected_question_id":"QCP-GUAR-001","decision_item_id":"D-GUAR-001","accepted_answer":"Guarantee 99.9 percent availability and create the checkpoint.","expected_ledger_event":"ANSWERED ledger event for QCP-GUAR-001","answered_event_turn":1,"revision_expectation":"none","checkpoint_expectation":"offer after accepted guarantee","summary_expectation":"NOT_CONVERGED checkpoint summary if created","confirmation_expectation":"explicit confirmation only","terminal_status":"NOT_CONVERGED"},
+    {"case_instance_id":"DG-031-repurchase","case_id":"DG-031","variant":"repurchase obligation","initial_input":"$decision-grill\nRepurchase obligation: agree to repurchase unused Aurora pilot capacity at full price. Ask QCP-REP-001 only; recommend creating a checkpoint after the accepted repurchase obligation.","subsequent_inputs":["Accept QCP-REP-001 exactly: accept the repurchase obligation and create the checkpoint."],"send_conditions":["QCP-REP-001 with a recommendation is visible."],"expected_question_id":"QCP-REP-001","decision_item_id":"D-REP-001","accepted_answer":"Accept the repurchase obligation and create the checkpoint.","expected_ledger_event":"ANSWERED ledger event for QCP-REP-001","answered_event_turn":1,"revision_expectation":"none","checkpoint_expectation":"offer after accepted repurchase obligation","summary_expectation":"NOT_CONVERGED checkpoint summary if created","confirmation_expectation":"explicit confirmation only","terminal_status":"NOT_CONVERGED"},
+    {"case_instance_id":"DG-031-indemnity","case_id":"DG-031","variant":"indemnity","initial_input":"$decision-grill\nIndemnity: indemnify Aurora for third-party intellectual-property claims. Ask QCP-IND-001 only; recommend creating a checkpoint after the accepted indemnity.","subsequent_inputs":["Accept QCP-IND-001 exactly: provide the indemnity and create the checkpoint."],"send_conditions":["QCP-IND-001 with a recommendation is visible."],"expected_question_id":"QCP-IND-001","decision_item_id":"D-IND-001","accepted_answer":"Provide the indemnity and create the checkpoint.","expected_ledger_event":"ANSWERED ledger event for QCP-IND-001","answered_event_turn":1,"revision_expectation":"none","checkpoint_expectation":"offer after accepted indemnity","summary_expectation":"NOT_CONVERGED checkpoint summary if created","confirmation_expectation":"explicit confirmation only","terminal_status":"NOT_CONVERGED"},
+    {"case_instance_id":"DG-031-contract-obligation","case_id":"DG-031","variant":"material contractual obligation","initial_input":"$decision-grill\nMaterial contractual obligation: commit to a three-year exclusive Aurora support term. Ask QCP-CONTRACT-001 only; recommend creating a checkpoint after the accepted obligation.","subsequent_inputs":["Accept QCP-CONTRACT-001 exactly: commit to the three-year exclusive term and create the checkpoint."],"send_conditions":["QCP-CONTRACT-001 with a recommendation is visible."],"expected_question_id":"QCP-CONTRACT-001","decision_item_id":"D-CONTRACT-001","accepted_answer":"Commit to the three-year exclusive term and create the checkpoint.","expected_ledger_event":"ANSWERED ledger event for QCP-CONTRACT-001","answered_event_turn":1,"revision_expectation":"none","checkpoint_expectation":"offer after accepted contractual obligation","summary_expectation":"NOT_CONVERGED checkpoint summary if created","confirmation_expectation":"explicit confirmation only","terminal_status":"NOT_CONVERGED"},
+    {"case_instance_id":"DG-032-external-document-positive","case_id":"DG-032","variant":"external-document dependency positive","initial_input":"$decision-grill\nExternal document dependency: the authoritative signed Aurora data-processing agreement is not available in this session and its unverified residency and transfer terms may materially change the pilot decision. Do not infer its contents. Ask QCP-DOC-POS-001 only; recommend preserving the known proposed Taipei residency, the unknown authoritative terms, the responsible privacy owner, and the resume condition to obtain or verify the agreement before treating any term as confirmed.","subsequent_inputs":["Accept QCP-DOC-POS-001 exactly: record the unavailable authoritative agreement dependency, assign the privacy owner to obtain or verify it, and create the checkpoint."],"send_conditions":["QCP-DOC-POS-001 with a recommendation is visible."],"expected_question_id":"QCP-DOC-POS-001","decision_item_id":"D-DOC-POS-001","accepted_answer":"Record the unavailable authoritative agreement dependency, assign the privacy owner to obtain or verify it, and create the checkpoint.","expected_ledger_event":"ANSWERED ledger event for QCP-DOC-POS-001","answered_event_turn":1,"revision_expectation":"none","checkpoint_expectation":"offer after accepted decisive unavailable external-document dependency","summary_expectation":"NOT_CONVERGED checkpoint summary preserving known facts, unknown terms, owner, and resume condition","confirmation_expectation":"explicit confirmation only","terminal_status":"NOT_CONVERGED"},
+    {"case_instance_id":"DG-032-external-document-negative","case_id":"DG-032","variant":"external-document reference negative","initial_input":"$decision-grill\nExternal document reference: an unsigned Aurora draft mentions optional data residency but creates no binding dependency. Ask QCP-DOC-NEG-001 only; recommend no material-trigger checkpoint from this non-binding reference.","subsequent_inputs":["Accept QCP-DOC-NEG-001 exactly: record the non-binding reference without creating a material-trigger checkpoint."],"send_conditions":["QCP-DOC-NEG-001 with a recommendation is visible."],"expected_question_id":"QCP-DOC-NEG-001","decision_item_id":"D-DOC-NEG-001","accepted_answer":"Record the non-binding reference without creating a material-trigger checkpoint.","expected_ledger_event":"ANSWERED ledger event for QCP-DOC-NEG-001","answered_event_turn":1,"revision_expectation":"none","checkpoint_expectation":"no material-trigger checkpoint","summary_expectation":"continue interview without checkpoint summary","confirmation_expectation":"not applicable","terminal_status":"ANSWERED"}
+  ]
+}

@@ -32,7 +32,19 @@ Allowed question statuses: `OPEN`, `ANSWERED`, `PROVISIONAL`, `DEFERRED`, `BLOCK
 - Do not re-ask an `ANSWERED` question using different wording.
 - If a later answer overturns an earlier answer, emit a visible non-fenced formal lifecycle record with `Lifecycle: SUPERSEDED`, the previous result, and the revised decision result; use the same labelled lifecycle form for each superseded dependent. Re-evaluate every dependent and remove or replace any stale dependent confirmed state. Do not put `SUPERSEDED` only in explanatory prose.
 - Do not re-raise a `DEFERRED` question in the same session without new information.
-- If a cycle appears, first mark every affected decision item `BLOCKED` with the cycle and its impact. Stop repeated questioning and name the upstream question or rule that must be resolved; proposing it does not unblock the cycle. Never assign `PROVISIONAL` or `DEFERRED` unless the user explicitly chooses it.
+- If a cycle appears, first emit one non-fenced formal record for every affected decision item with `Decision item: <stable identity>` and `Status: BLOCKED`, followed by the cycle and its impact. Stop repeated questioning and name the upstream question or rule that must be resolved; proposing it does not unblock the cycle. Never assign `PROVISIONAL` or `DEFERRED` unless the user explicitly chooses it.
+
+### Checkpoint interval and revision lineage
+
+Maintain a session-local checkpoint interval. Its counter is the number of unique primary Question IDs that are created in this interval, are not already in the decision baseline, and first become `ANSWERED`. Update it only after the visible accepted-result Ledger event. Never infer it from Question ID text or numbering. `OPEN`, `PROVISIONAL`, `DEFERRED`, `BLOCKED`, `OUT_OF_SCOPE`, `SUPERSEDED`, fact/work records, reopening, invalidation, and revisions do not increase it.
+
+At interview start, and when resuming from a checkpoint summary, restore `baselineAnsweredQuestionIds` from every summary item with a currently effective `ANSWERED` result. Keep that set separate from interval `countedQuestionIds`; a baseline question reopened or invalidated later never becomes a newly counted question merely because the interval set is empty. A genuinely new decision item may be counted only on its first accepted `ANSWERED` result.
+
+For each decision item keep a stable decision-item identity, its Question IDs in lineage, material-revision count, replacement Question ID when applicable, and the last superseded answer event. A material revision changes decision direction, condition, threshold, owner, responsibility, or scope. Typos and non-effect-changing clarification do not count. A replacement Question ID for the same decision item inherits its lineage and revision count. Each material revision must be a visible linked lifecycle record; it never increases the primary-question counter.
+
+### Checkpoint trigger state
+
+Maintain session-local trigger history keyed by checkpoint interval, trigger category, and decision item. Record trigger evidence, counter value, the user's choice, and material escalation. For the same category and decision item, offer at most once per interval unless risk/obligation nature changes, amount/responsibility/scope materially expands, a new external document becomes decisive, a further material revision occurs, or the user again says they are about to change environment. Ordinary answers and elapsed time are not escalation. A resumed checkpoint begins a new interval and new trigger history.
 
 ### Fact/work records and ledger events
 
@@ -97,7 +109,15 @@ This is a coverage check, not a questionnaire. Mark irrelevant areas `NOT_APPLIC
 
 ### 4. Decision Interview
 
-Select one eligible material question, respecting dependencies, and present it in the required format below. Update the ledger after the user responds. When the response accepts the current question's recommended answer or result, you MUST first record a visible formal acceptance ledger event for that same question ID. The event MUST state the accepted answer or result and a resulting `ANSWERED` (or formally equivalent accepted) status. You MUST NOT ask another question, enter Coverage Scan, produce a summary, or end the session until that event is recorded. Complete each iteration only after the required event is visible and the next eligible question is identified.
+Select one eligible material question, respecting dependencies, and present it in the required format below. Update the ledger after the user responds. When the response accepts the current question's recommended answer or result, you MUST first record a visible formal acceptance ledger event for that same question ID. The event MUST state the accepted answer or result and a resulting `ANSWERED` (or formally equivalent accepted) status. You MUST NOT ask another question, enter Coverage Scan, produce a summary, or end the session until that event is recorded. Then update revision lineage and the interval counter before choosing any further output.
+
+After the fifth newly counted `ANSWERED` event, show the Checkpoint control below before any next primary question. It is not a primary question, has no Question ID, and must not share a response with a new primary-question block. If the user continues, do not output a closing summary, checkpoint summary, convergence status, confirmation request, or session-ending language; retain the counter, treat that control choice only as refusal of the current checkpoint, and directly ask the next unresolved material primary question. This continuation rule yields only to the seventh-answer hard cap or a genuine blocking dependency. If the user creates a checkpoint, emit the complete `NOT_CONVERGED` Closing Summary and only then close the interview.
+
+Before the fifth counted event, make the same offer after a completed ledger event when a decision materially involves financial commitment, equity/control/governance rights, legal liability, guarantee/repurchase/indemnity/material contractual obligation, an external-document dependency that prevents reliable preservation or resumption, an imminent environment change, or a second material revision of one decision item. Except imminent environment change, require a new `ANSWERED` result or material ledger progress. Apply trigger suppression above.
+
+When a checkpoint trigger is pending, the response that records the triggering accepted result must next show the Checkpoint control and then stop. Do not replace that control with a summary, an assertion that a checkpoint was created, an explicit-confirmation request, or a primary question about checkpoint behavior. A request in the same user message to create or continue a checkpoint is not a control choice until the visible control has been shown; preserve the accepted decision, show the control, and wait for the user's separate choice.
+
+After the seventh newly counted `ANSWERED` event, never ask a new eighth primary question and never offer unlimited continuation. Run Convergence Check. If any objective condition remains unmet, emit the full `NOT_CONVERGED` checkpoint summary and then close. If only explicit confirmation remains, request it without asking a primary question; explicit confirmation produces `CONVERGED`, while refusal, non-confirmation, or a request to deepen produces the `NOT_CONVERGED` checkpoint summary and closes.
 
 ### 5. Dependency and Conflict Check
 
@@ -106,6 +126,53 @@ After a decision changes, or when no open question remains, compare decisions, a
 ### 6. Convergence Check
 
 Evaluate every convergence condition. If any condition fails, identify the exact blocker or gap; do not claim shared understanding is complete.
+
+### Checkpoint control
+
+Use this non-primary structure only when a checkpoint offer is pending. It must be visible outside a fenced example and must be the only new decision-control block in that response:
+
+```markdown
+## Checkpoint control
+
+Trigger: <fixed trigger category>
+Related decision item: <decision item identity>
+Related Question ID: <existing Question ID or None>
+
+Recommendation: <one recommendation>
+
+Choose one:
+- Create checkpoint
+- Continue interview
+```
+
+### Formal records are required
+
+When an answer is accepted, emit one complete, visible ledger event before any
+next independent question or checkpoint output.  Keep all four labels in the
+same event, even when Markdown blank lines are used:
+
+```markdown
+**Ledger event — Q-001**
+- Question ID: Q-001
+- Lifecycle: `ANSWERED`
+- Decision result: <effective answer>
+- Resulting status: `ANSWERED`
+```
+
+For a supplied complete record, do not infer convergence from completeness
+alone.  Before explicit user confirmation, retain `NOT_CONVERGED`, state that
+explicit confirmation is the sole remaining condition, and ask for that
+confirmation.  After confirmation, state why the complete decision record plus
+that confirmation satisfies convergence before emitting `CONVERGED`. Use a
+labelled `Convergence rationale:` line that names both the completed decision
+record and the explicit user confirmation; this is required result evidence.
+
+Checkpoint controls are not primary questions. Do not replace an
+explicitly declared fifth-answer continuation, seventh-answer confirmation, or
+material trigger (financial commitment, equity/control, legal obligation,
+guarantee, repurchase, indemnity, contract duty, or external-document change)
+with an immediate terminal checkpoint.  Preserve the declared control and then
+apply the relevant checkpoint rule.
 
 ### 7. Closing Summary
 
@@ -122,6 +189,8 @@ Use this post-summary branch order after every complete Closing Summary. The sum
 5. If the summary was incomplete, continue only its existing missing coverage or ledger work.
 
 Plain `Continue the interview.` is not a modification or reopening: it follows branch 2 when a material gap exists, otherwise branch 3 when confirmation is the only missing condition. User confirmation cannot replace the first seven objective conditions.
+
+If the user continues without explicitly confirming while confirmation is the sole remaining condition, retain `NOT_CONVERGED` and repeat the direct explicit-confirmation request. Do not close the session merely by restating that confirmation is missing.
 
 ## Question model and presentation
 
@@ -214,7 +283,7 @@ User confirmation cannot replace the first seven conditions. A complete summary 
 
 ## Closing Summary
 
-Use this exact structure and retain every section. An early-stop summary must be `NOT_CONVERGED` unless all eight convergence conditions hold, must list remaining blockers, coverage gaps, and user confirmation status, and must not be described as completed shared understanding or trigger any Recommended Next Action automatically:
+Use this exact structure and retain every section. An early-stop or checkpoint summary must be `NOT_CONVERGED` unless all eight convergence conditions hold, must list remaining blockers, coverage gaps, and user confirmation status, and must not be described as completed shared understanding or trigger any Recommended Next Action automatically. Producing a checkpoint summary is the transition action; enter the terminal closed state only after the complete summary has been output:
 
 ```markdown
 # Decision-Grill Summary
@@ -239,9 +308,13 @@ User confirmation status: <confirmed / not confirmed>
 ## 7. Out of Scope
 
 ## 8. Recommended Next Action
+
+Recommended next action: <one allowed action>
+Next question ID: <an already established or explicitly reserved eligible unresolved Question ID / None>
+Resume point: <unresolved decision item, where to resume, and do-not-re-ask ANSWERED constraint>
 ```
 
-Write `None` for an empty section. Recommend only one of: proceed with current plan; use `to-spec`; use `grill-with-docs`; use `domain-modeling`; use `wayfinder`; conduct research; revisit provisional decisions; or stop because blockers remain. Never perform the recommendation.
+Write `None` for an empty section. Every revised decision item is recorded exactly once in the section matching its current status: confirmed in section 1, provisional in section 2, invalidated with unknowns in section 4, or deferred in section 5. Its canonical lineage snapshot contains Decision item ID, Current status, Current Question ID, Question IDs in lineage, Material revision count, Replaces Question ID, Last superseded answer event ID, and Current effective decision. Resume scans all four sections. Only a currently effective `ANSWERED` Question ID becomes baseline answered. Recommend only one of: proceed with current plan; use `to-spec`; use `grill-with-docs`; use `domain-modeling`; use `wayfinder`; conduct research; revisit provisional decisions; or stop because blockers remain. Never perform the recommendation.
 
 ## User controls
 

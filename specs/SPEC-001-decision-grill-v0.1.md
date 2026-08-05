@@ -424,6 +424,54 @@ The user may at any time request:
 - Installation automation
 - Modifying existing official Skills
 
+## Checkpoint Extension
+
+### Formal acceptance and convergence clarification
+
+Each accepted answer MUST have one message-local ledger event containing the
+Question ID, Lifecycle, Decision result, and Resulting status. Markdown blank
+lines between those labelled fields do not split the event. A complete record
+without explicit user confirmation remains `NOT_CONVERGED`: the output MUST say
+that confirmation is the sole remaining condition and request it. Once the user
+confirms, the output MUST explain that the completed record and confirmation
+together justify `CONVERGED` in a labelled `Convergence rationale:` record.
+
+Checkpoint controls are not primary questions. A declared fifth-answer
+continuation, seventh-answer confirmation, or material trigger MUST be honored
+as declared; it MUST NOT be replaced by an immediate terminal checkpoint.
+
+### Interval counting and baseline
+
+Maintain a conversation-local checkpoint interval. Count only a unique primary Question ID that is created in that interval, is not already a baseline answered question, and first formally becomes `ANSWERED`. The accepted-result ledger event is emitted before the counter changes. Do not infer a count from Question ID spelling or sequence. `OPEN`, `PROVISIONAL`, `DEFERRED`, `BLOCKED`, `OUT_OF_SCOPE`, `SUPERSEDED`, revisions, invalidations, and fact/work records do not count.
+
+At initial intake, establish `baselineAnsweredQuestionIds` from already effective answered decisions. A checkpoint summary supplies the next interval's baseline. Reopened or invalidated baseline questions never become newly counted merely because a new interval starts. A new Question ID counts only if it is a genuinely new decision item and first becomes `ANSWERED` in that interval.
+
+### Offers and hard cap
+
+After the fifth counted answer event, output a non-primary Checkpoint control before any next primary question. It offers Create checkpoint and Continue interview and includes one recommendation. Continue keeps the counter at five, produces no summary, and is not explicit convergence confirmation. Create checkpoint emits a complete eight-section `NOT_CONVERGED` summary, then closes the interview.
+
+Before the fifth counted answer, make the same offer after a completed material ledger event for a material financial commitment, equity/control/governance right, legal liability, guarantee, repurchase, indemnity, material contractual obligation, decisive external-document dependency, imminent environment change, or the second material revision of one decision item. Except environment change, require new `ANSWERED` evidence or material ledger progress. Suppress the same interval/category/decision-item offer until material escalation.
+
+After the seventh counted answer event, no new eighth primary question may be created. Run the existing convergence check. If an objective condition remains, emit the complete `NOT_CONVERGED` checkpoint summary then close. If only explicit confirmation remains, request it without a primary question. Explicit confirmation emits `CONVERGED`; rejection, non-confirmation, or deepening emits the `NOT_CONVERGED` checkpoint summary then closes.
+
+### Revision lineage and resume
+
+Every decision item has a stable decision-item identity and a Question-ID lineage. Material revisions change direction, condition, threshold, owner, responsibility, or scope; wording-only clarification does not. Replacement Question IDs for the same item inherit the lineage and material revision count. Revision events visibly link the prior and current result and never increment the answer counter.
+
+For every materially revised decision item, exactly one canonical lineage snapshot appears in the summary section matching its current status: Confirmed Decisions, Provisional Decisions, Unknowns when invalidated with unknowns, or Deferred Questions. It includes Decision item ID, Current status, Current Question ID, Question IDs in lineage, Material revision count, Replaces Question ID, Last superseded answer event ID, and Current effective decision. Resume scans all four sections. Only Question IDs with an effective `ANSWERED` result are restored as baseline answered IDs.
+
+### Closing Summary additions
+
+The eighth section retains exactly one recommendation and also contains:
+
+```text
+Recommended next action: <one allowed action>
+Next question ID: <already established or explicitly reserved eligible unresolved Question ID / None>
+Resume point: <unresolved item, resume location, and do-not-re-ask constraint>
+```
+
+The next ID is never generated at resume time or inferred by arithmetic. A checkpoint summary is a transition action; only after it is completely output is the interview closed. Resuming it establishes a new interval with a reset counter and trigger history but restores the summary baseline and lineage.
+
 ## Open Specification Questions
 
 | Question | Status | Product Owner decision | Implementation impact |

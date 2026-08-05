@@ -103,4 +103,10 @@ Targeted reuses the normal preflight, ActiveFolder safety, project-level Skill d
 
 The shared selected-case loop accepts exactly one object per selected case. It must carry the selected catalog case ID and one final category: `PASS`, `FAIL`, `BLOCKED`, `RUNNER_INTERNAL_ERROR`, or `NOT_EXECUTED`. Null, scalar, multiple pipeline outputs, missing or blank fields, unknown categories, and mismatched case IDs are runner-contract failures, never product outcomes.
 
+## Checkpoint fixtures and authorization
+
+Checkpoint cases use explicit primary Question IDs, stable decision-item IDs, exact accepted inputs, and declared send conditions. A checkpoint control is a non-primary block: it may cite an existing Question ID but must not create one or appear with a new primary-question block in the same response. Resume cases either capture a preceding session's emitted summary verbatim or supply a complete eight-section canonical summary fixture whose `Next question ID` refers to a reserved unresolved item in section 5.
+
+Production modes require a Product Owner Authorization Manifest (POAM) outside the repository through `-AuthorizationManifestPath`. The POAM supplies the reviewed base branch and exact base HEAD, the exact authorized dirty paths/statuses, and the hash-pinned preexisting user artifact. It is the operational trust root; the runner rejects a caller-provided replacement HEAD, repository-local manifest, extra change, rename/copy, status change, or hash change. At start and completion it snapshots all authorized files, the runner itself, and the preserved user artifact. Output remains below `D:\temp`, never in the repository.
+
 For a malformed invocation result, the runner creates a generic `RUNNER_INTERNAL_ERROR` trigger containing the original output shape and any invocation exception, persists the aggregate JSON and Markdown, then creates `NOT_EXECUTED` only for the remaining selected cases. Unselected catalog cases never appear. The recovery path uses the same result contract in Targeted, Core, and Full flows.
